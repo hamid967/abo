@@ -1,9 +1,9 @@
 import * as Api from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Platform } from "react-native";
 
-import { authenticateBiometric, getBiometricAvailability, isBiometricEnabled, type BiometricAvailability } from "@/lib/biometric-auth";
+import { authenticateBiometric, getBiometricAvailability, getBiometricLockTimeout, isBiometricEnabled, type BiometricAvailability } from "@/lib/biometric-auth";
 
 type UseAuthOptions = {
   autoFetch?: boolean;
@@ -17,6 +17,8 @@ export function useAuth(options?: UseAuthOptions) {
   const [biometricLocked, setBiometricLocked] = useState(false);
   const [biometricUser, setBiometricUser] = useState<Auth.User | null>(null);
   const [biometricAvailability, setBiometricAvailability] = useState<BiometricAvailability>({ available: false, kind: "none", label: "المصادقة البيومترية" });
+  const currentUserRef = useRef<Auth.User | null>(null);
+  const backgroundAtRef = useRef<number | null>(null);
 
   const applyNativeUser = useCallback(async (cachedUser: Auth.User | null) => {
     if (!cachedUser) {
@@ -111,6 +113,34 @@ export function useAuth(options?: UseAuthOptions) {
   }, []);
 
   const isAuthenticated = useMemo(() => Boolean(user), [user]);
+
+  useEffect(() => {
+    currentUserRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "background" || nextState === "inactive") {
+        backgroundAtRef.current = Date.now();
+        return;
+      }
+      if (nextState !== "active" || backgroundAtRef.current === null) return;
+      const backgroundAt = backgroundAtRef.current;
+      backgroundAtRef.current = null;
+      void Promise.all([isBiometricEnabled(), getBiometricAvailability(), getBiometricLockTimeout()]).then(([enabled, availability, timeout]) => {
+        const activeUser = currentUserRef.current;
+        if (!enabled || !availability.available || !activeUser) return;
+        if (timeout === 0 || Date.now() - backgroundAt >= timeout) {
+          setBiometricAvailability(availability);
+          setBiometricUser(activeUser);
+          setUser(null);
+          setBiometricLocked(true);
+        }
+      });
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (!autoFetch) {

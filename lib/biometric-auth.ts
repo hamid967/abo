@@ -3,6 +3,9 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 const BIOMETRIC_ENABLED_KEY = "abu_mishal_biometric_enabled";
+const BIOMETRIC_LOCK_TIMEOUT_KEY = "abu_mishal_biometric_lock_timeout_ms";
+export const BIOMETRIC_LOCK_TIMEOUTS = [0, 60_000, 300_000, 900_000, 1_800_000] as const;
+export type BiometricLockTimeout = (typeof BIOMETRIC_LOCK_TIMEOUTS)[number];
 
 export type BiometricKind = "face" | "fingerprint" | "iris" | "none";
 
@@ -33,6 +36,18 @@ export async function getBiometricAvailability(): Promise<BiometricAvailability>
 export async function isBiometricEnabled(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   return (await SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY)) === "true";
+}
+
+export async function getBiometricLockTimeout(): Promise<BiometricLockTimeout> {
+  if (Platform.OS === "web") return 0;
+  const rawValue = await SecureStore.getItemAsync(BIOMETRIC_LOCK_TIMEOUT_KEY);
+  const parsed = Number(rawValue);
+  return BIOMETRIC_LOCK_TIMEOUTS.includes(parsed as BiometricLockTimeout) ? parsed as BiometricLockTimeout : 0;
+}
+
+export async function setBiometricLockTimeout(timeout: BiometricLockTimeout): Promise<void> {
+  if (Platform.OS === "web") return;
+  await SecureStore.setItemAsync(BIOMETRIC_LOCK_TIMEOUT_KEY, String(timeout));
 }
 
 export async function setBiometricEnabled(enabled: boolean): Promise<void> {
