@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import {
+  addStatusHistoryEntry,
   createTransaction,
   GovernmentTransaction,
   TransactionDraft,
@@ -11,12 +12,25 @@ import { cancelTransactionReminder, scheduleTransactionReminder } from "@/lib/no
 
 const STORAGE_KEY = "government-transactions:v1";
 
+const legacyStatusMap: Record<string, TransactionStatus> = {
+  new: "received",
+  action_required: "awaiting_customer_documents",
+};
+
+function normalizeStoredTransaction(transaction: GovernmentTransaction): GovernmentTransaction {
+  const status = legacyStatusMap[transaction.status] ?? transaction.status;
+  const statusHistory = transaction.statusHistory?.length
+    ? transaction.statusHistory
+    : [{ id: `${transaction.id}-history-migrated`, status, createdAt: transaction.updatedAt, actorName: "النظام" }];
+  return { ...transaction, status, statusHistory };
+}
+
 type TransactionContextValue = {
   transactions: GovernmentTransaction[];
   isLoading: boolean;
   addTransaction: (draft: TransactionDraft) => Promise<GovernmentTransaction>;
   updateTransaction: (id: string, patch: Partial<TransactionDraft>) => Promise<GovernmentTransaction | undefined>;
-  updateStatus: (id: string, status: TransactionStatus) => Promise<void>;
+  updateStatus: (id: string, status: TransactionStatus, note?: string) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
 };
 
@@ -36,7 +50,7 @@ export function TransactionProvider({ children }: PropsWithChildren) {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored) as GovernmentTransaction[];
-          if (Array.isArray(parsed)) setTransactions(parsed);
+          if (Array.isArray(parsed)) setTransactions(parsed.map(normalizeStoredTransaction));
         }
       } finally {
         setIsLoading(false);
@@ -68,11 +82,16 @@ export function TransactionProvider({ children }: PropsWithChildren) {
     return scheduledTransaction;
   }, [transactions]);
 
-  const updateStatus = useCallback(async (id: string, status: TransactionStatus) => {
+  const updateStatus = useCallback(async (id: string, status: TransactionStatus, note?: string) => {
     const existing = transactions.find((transaction) => transaction.id === id);
     if (!existing) return;
     await cancelTransactionReminder(existing.reminder);
-    const updated = { ...existing, status, updatedAt: new Date().toISOString() };
+    const updated = {
+      ...existing,
+      status,
+      updatedAt: new Date().toISOString(),
+      statusHistory: status === existing.status ? existing.statusHistory : addStatusHistoryEntry(existing, status, "فريق أبو مشعل", note),
+    };
     const reminder = await scheduleTransactionReminder(updated);
     const next = transactions.map((transaction) => transaction.id === id ? { ...updated, reminder } : transaction);
     setTransactions(next);

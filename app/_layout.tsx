@@ -10,6 +10,9 @@ import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { TransactionProvider } from "@/lib/transactions-provider";
+import { WorkspaceProvider } from "@/lib/workspace-provider";
+import { RoleProvider } from "@/lib/role-provider";
+import { InquiryProvider } from "@/lib/inquiries-provider";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -87,14 +90,24 @@ export default function RootLayout() {
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
-          <TransactionProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="transaction/form" />
-              <Stack.Screen name="transaction/[id]" />
-              <Stack.Screen name="oauth/callback" />
-            </Stack>
-          </TransactionProvider>
+          <RoleProvider>
+            <TransactionProvider>
+              <WorkspaceProvider>
+                <InquiryProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="transaction/form" />
+                <Stack.Screen name="transaction/[id]" />
+                <Stack.Screen name="workspace/index" />
+                <Stack.Screen name="operations/index" />
+                <Stack.Screen name="inquiries/index" />
+                <Stack.Screen name="reports/index" />
+                <Stack.Screen name="oauth/callback" />
+              </Stack>
+                </InquiryProvider>
+              </WorkspaceProvider>
+            </TransactionProvider>
+          </RoleProvider>
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>

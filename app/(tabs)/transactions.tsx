@@ -19,7 +19,7 @@ export default function TransactionsScreen() {
   const shownTransactions = filter === "all" ? transactions : transactions.filter((transaction) => transaction.status === filter);
 
   if (isLoading) {
-    return <ScreenContainer style={styles.loading}><ActivityIndicator color="#0B5CAD" /></ScreenContainer>;
+    return <ScreenContainer style={styles.loading}><ActivityIndicator color="#0B5D45" /></ScreenContainer>;
   }
 
   return (
@@ -31,12 +31,12 @@ export default function TransactionsScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.titleRow}>
-              <Pressable onPress={() => router.push("/transaction/form")} style={({ pressed }) => [styles.addIcon, pressed && styles.pressed]}>
+              <Pressable onPress={() => router.push("/request/new" as never)} style={({ pressed }) => [styles.addIcon, pressed && styles.pressed]}>
                 <Ionicons name="add" size={24} color="#FFFFFF" />
               </Pressable>
               <View style={styles.titleCopy}>
-                <Text style={styles.title}>المعاملات</Text>
-                <Text style={styles.subtitle}>{transactions.length ? `${transactions.length} سجلات محفوظة على جهازك` : "نظّم معاملاتك في مكان واحد"}</Text>
+                <Text style={styles.title}>معاملاتي</Text>
+                <Text style={styles.subtitle}>{transactions.length ? `${transactions.length} طلبات قيد المتابعة` : "ابدأ طلبك واترك أبو مشعل ينظم المتابعة"}</Text>
               </View>
             </View>
             <FlatList
@@ -58,7 +58,7 @@ export default function TransactionsScreen() {
           </>
         }
         renderItem={({ item }) => <TransactionCard transaction={item} onPress={() => router.push({ pathname: "/transaction/[id]", params: { id: item.id } })} />}
-        ListEmptyComponent={<EmptyState onAdd={() => router.push("/transaction/form")} />}
+        ListEmptyComponent={<EmptyState onAdd={() => router.push("/request/new" as never)} />}
       />
     </ScreenContainer>
   );
@@ -68,14 +68,14 @@ const styles = StyleSheet.create({
   loading: { alignItems: "center", justifyContent: "center" },
   content: { padding: 20, paddingBottom: 120 },
   titleRow: { alignItems: "center", flexDirection: "row-reverse", gap: 12, marginBottom: 18 },
-  addIcon: { alignItems: "center", backgroundColor: "#0B5CAD", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
+  addIcon: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
   titleCopy: { alignItems: "flex-end", flex: 1 },
   title: { color: "#172033", fontSize: 24, fontWeight: "800", writingDirection: "rtl" },
   subtitle: { color: "#667085", fontSize: 12, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   filterList: { gap: 8, paddingBottom: 18 },
   filter: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E6EAF0", borderRadius: 999, borderWidth: 1, justifyContent: "center", minHeight: 38, paddingHorizontal: 12 },
-  activeFilter: { backgroundColor: "#EAF3FF", borderColor: "#0B5CAD" },
+  activeFilter: { backgroundColor: "#E9F5EC", borderColor: "#0B5D45" },
   filterText: { color: "#667085", fontSize: 13, fontWeight: "800", writingDirection: "rtl" },
-  activeFilterText: { color: "#0B5CAD" },
+  activeFilterText: { color: "#0B5D45" },
   pressed: { opacity: 0.7 },
 });

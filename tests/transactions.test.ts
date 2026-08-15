@@ -8,12 +8,14 @@ describe("transaction domain", () => {
       title: "تجديد وثيقة",
       agency: "الجهة المختصة",
       reference: "REF-123",
-      status: "new",
+      status: "draft",
     });
 
     expect(transaction.id).toMatch(/^transaction-/);
     expect(transaction.updatedAt).toBeTruthy();
     expect(transaction.title).toBe("تجديد وثيقة");
+    expect(transaction.statusHistory).toHaveLength(1);
+    expect(transaction.requestNumber).toMatch(/^AM-/);
   });
 
   it("flags unfinished transactions whose due date has passed", () => {
@@ -25,6 +27,7 @@ describe("transaction domain", () => {
       status: "under_review" as const,
       dueDate: "2026-01-10",
       updatedAt: "2026-01-01T00:00:00.000Z",
+      statusHistory: [],
     };
     const completed = { ...overdue, status: "completed" as const };
 

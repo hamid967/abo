@@ -18,7 +18,7 @@ export default function HomeScreen() {
   if (isLoading) {
     return (
       <ScreenContainer style={styles.loading}>
-        <ActivityIndicator color="#0B5CAD" />
+        <ActivityIndicator color="#0B5D45" />
       </ScreenContainer>
     );
   }
@@ -32,23 +32,28 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <View style={styles.brandMark}><Ionicons name="shield-checkmark" size={21} color="#FFFFFF" /></View>
+              <View style={styles.brandMark}><Ionicons name="checkmark-done" size={21} color="#FFFFFF" /></View>
               <View style={styles.headerText}>
-                <Text style={styles.eyebrow}>متابع المعاملات الحكومية</Text>
-                <Text style={styles.greeting}>مرحباً، تابع معاملاتك</Text>
+                <Text style={styles.eyebrow}>أبو مشعل</Text>
+                <Text style={styles.greeting}>معاملاتك أوضح، ومتابعتك أسهل</Text>
               </View>
+            </View>
+
+            <View style={styles.disclaimer}>
+              <Ionicons name="information-circle-outline" size={17} color="#49665B" />
+              <Text style={styles.disclaimerText}>منصة مستقلة للمساعدة في المتابعة، ولا تمثل أي جهة حكومية.</Text>
             </View>
 
             <View style={styles.summaryGrid}>
               <View style={[styles.summaryCard, styles.primarySummary]}>
                 <Ionicons name="layers-outline" size={22} color="#CFE6FF" />
                 <Text style={styles.summaryNumber}>{activeCount}</Text>
-                <Text style={styles.summaryLabel}>معاملة قيد المتابعة</Text>
+                <Text style={styles.summaryLabel}>طلب قيد المتابعة</Text>
               </View>
               <View style={styles.summaryCard}>
                 <Ionicons name="checkmark-circle-outline" size={22} color="#15803D" />
                 <Text style={[styles.summaryNumber, styles.darkNumber]}>{transactions.filter((transaction) => transaction.status === "completed").length}</Text>
-                <Text style={[styles.summaryLabel, styles.darkLabel]}>معاملة مكتملة</Text>
+                <Text style={[styles.summaryLabel, styles.darkLabel]}>طلب مكتمل</Text>
               </View>
             </View>
 
@@ -59,6 +64,15 @@ export default function HomeScreen() {
                 <Text style={styles.nextText}>{nearestDue ? `${nearestDue.title} · ${nearestDue.dueDate}` : "سجّل تاريخ متابعة لأي معاملة لتظهر هنا."}</Text>
               </View>
             </View>
+
+            <Pressable onPress={() => router.push("/workspace" as never)} style={({ pressed }) => [styles.workspaceButton, pressed && styles.addButtonPressed]}>
+              <View style={styles.workspaceIcon}><Ionicons name="checkmark-done-outline" size={20} color="#0B5D45" /></View>
+              <View style={styles.workspaceCopy}><Text style={styles.workspaceTitle}>مساحة العمل</Text><Text style={styles.workspaceText}>مهامك ومواعيدك ومستنداتك في مكان واحد.</Text></View>
+              <Ionicons name="chevron-back" size={19} color="#0B5D45" />
+            </Pressable>
+            <Pressable onPress={() => router.push("/inquiries" as never)} style={({ pressed }) => [styles.assistantButton, pressed && styles.addButtonPressed]}>
+              <Ionicons name="sparkles-outline" size={20} color="#0B5D45" /><Text style={styles.assistantText}>اسأل أبو مشعل عن طلبك أو الإجراء التالي</Text><Ionicons name="chevron-back" size={19} color="#0B5D45" />
+            </Pressable>
 
             <View style={styles.sectionTitleRow}>
               <Pressable onPress={() => router.push("/(tabs)/transactions")}><Text style={styles.allLink}>عرض الكل</Text></Pressable>
@@ -72,12 +86,12 @@ export default function HomeScreen() {
             onPress={() => router.push({ pathname: "/transaction/[id]", params: { id: item.id } })}
           />
         )}
-        ListEmptyComponent={<EmptyState onAdd={() => router.push("/transaction/form")} />}
+        ListEmptyComponent={<EmptyState onAdd={() => router.push("/request/new" as never)} />}
         ListFooterComponent={
           transactions.length > 0 ? (
-            <Pressable onPress={() => router.push("/transaction/form")} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
+            <Pressable onPress={() => router.push("/request/new" as never)} style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}>
               <Ionicons name="add" size={22} color="#FFFFFF" />
-              <Text style={styles.addButtonText}>إضافة معاملة جديدة</Text>
+              <Text style={styles.addButtonText}>بدء طلب جديد</Text>
             </Pressable>
           ) : null
         }
@@ -90,13 +104,15 @@ const styles = StyleSheet.create({
   loading: { alignItems: "center", justifyContent: "center" },
   content: { padding: 20, paddingBottom: 120 },
   header: { alignItems: "center", flexDirection: "row-reverse", gap: 12, marginBottom: 24 },
-  brandMark: { alignItems: "center", backgroundColor: "#0B5CAD", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
+  brandMark: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
   headerText: { alignItems: "flex-end", flex: 1 },
   eyebrow: { color: "#667085", fontSize: 12, fontWeight: "600", writingDirection: "rtl" },
   greeting: { color: "#172033", fontSize: 20, fontWeight: "800", marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   summaryGrid: { flexDirection: "row-reverse", gap: 12, marginBottom: 14 },
   summaryCard: { backgroundColor: "#FFFFFF", borderColor: "#E6EAF0", borderRadius: 20, borderWidth: 1, flex: 1, minHeight: 134, padding: 16 },
-  primarySummary: { backgroundColor: "#0B5CAD", borderColor: "#0B5CAD" },
+  disclaimer: { alignItems: "flex-start", backgroundColor: "#F4F0E6", borderColor: "#E7D9BD", borderRadius: 14, borderWidth: 1, flexDirection: "row-reverse", gap: 8, marginBottom: 14, padding: 12 },
+  disclaimerText: { color: "#49665B", flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right", writingDirection: "rtl" },
+  primarySummary: { backgroundColor: "#0B5D45", borderColor: "#0B5D45" },
   summaryNumber: { color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginTop: 12 },
   darkNumber: { color: "#172033" },
   summaryLabel: { color: "#E6F2FF", fontSize: 12, fontWeight: "600", lineHeight: 18, marginTop: 3, writingDirection: "rtl" },
@@ -106,10 +122,17 @@ const styles = StyleSheet.create({
   nextCopy: { alignItems: "flex-end", flex: 1 },
   nextTitle: { color: "#9A4A08", fontSize: 13, fontWeight: "800", writingDirection: "rtl" },
   nextText: { color: "#7C5A36", fontSize: 12, marginTop: 4, textAlign: "right", writingDirection: "rtl" },
+  workspaceButton: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DCE8DF", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", gap: 11, marginBottom: 26, padding: 14 },
+  workspaceIcon: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 12, height: 42, justifyContent: "center", width: 42 },
+  workspaceCopy: { alignItems: "flex-end", flex: 1 },
+  workspaceTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", writingDirection: "rtl" },
+  workspaceText: { color: "#66756E", fontSize: 12, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
+  assistantButton: { alignItems: "center", backgroundColor: "#F1F8F3", borderColor: "#D7E9DB", borderRadius: 16, borderWidth: 1, flexDirection: "row-reverse", gap: 10, marginBottom: 24, padding: 13 },
+  assistantText: { color: "#315548", flex: 1, fontSize: 13, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },
   sectionTitleRow: { alignItems: "center", flexDirection: "row-reverse", justifyContent: "space-between", marginBottom: 12 },
   sectionTitle: { color: "#172033", fontSize: 18, fontWeight: "800", writingDirection: "rtl" },
-  allLink: { color: "#0B5CAD", fontSize: 13, fontWeight: "800", writingDirection: "rtl" },
-  addButton: { alignItems: "center", backgroundColor: "#0B5CAD", borderRadius: 16, flexDirection: "row-reverse", gap: 8, justifyContent: "center", marginTop: 12, paddingVertical: 15 },
+  allLink: { color: "#0B5D45", fontSize: 13, fontWeight: "800", writingDirection: "rtl" },
+  addButton: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 16, flexDirection: "row-reverse", gap: 8, justifyContent: "center", marginTop: 12, paddingVertical: 15 },
   addButtonPressed: { opacity: 0.88, transform: [{ scale: 0.98 }] },
   addButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" },
 });

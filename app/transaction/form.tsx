@@ -9,7 +9,7 @@ import { useTransactions } from "@/lib/transactions-provider";
 import { canScheduleReminder, isValidReminderTime, reminderOffsetLabels, ReminderOffsetDays, reminderOffsets } from "@/lib/reminders";
 import { requestReminderPermission } from "@/lib/notification-service";
 
-const editableStatuses = transactionStatuses.filter((status) => status !== "overdue");
+const editableStatuses = transactionStatuses.filter((status) => !["overdue", "rejected", "cancelled", "archived"].includes(status));
 
 export default function TransactionFormScreen() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function TransactionFormScreen() {
   const [reference, setReference] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState<TransactionStatus>("new");
+  const [status, setStatus] = useState<TransactionStatus>("draft");
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderDaysBefore, setReminderDaysBefore] = useState<ReminderOffsetDays>(3);
   const [reminderHour, setReminderHour] = useState("09");
@@ -34,7 +34,7 @@ export default function TransactionFormScreen() {
     setReference(existing.reference);
     setDueDate(existing.dueDate ?? "");
     setNotes(existing.notes ?? "");
-    setStatus(existing.status === "overdue" ? "action_required" : existing.status);
+    setStatus(existing.status === "overdue" ? "awaiting_customer_documents" : existing.status);
     setReminderEnabled(existing.reminder?.enabled ?? false);
     setReminderDaysBefore(existing.reminder?.daysBefore ?? 3);
     setReminderHour(String(existing.reminder?.hour ?? 9).padStart(2, "0"));

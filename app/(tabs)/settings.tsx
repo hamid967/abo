@@ -1,88 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppRole, useAppRole } from "@/lib/role-provider";
 import { getReminderPermissionStatus, ReminderPermissionState, requestReminderPermission } from "@/lib/notification-service";
 
+const roles: { value: AppRole; label: string }[] = [{ value: "customer", label: "عميل" }, { value: "employee", label: "موظف" }, { value: "supervisor", label: "مشرف" }];
+
 export default function SettingsScreen() {
+  const router = useRouter();
+  const { role, setRole } = useAppRole();
   const [permission, setPermission] = useState<ReminderPermissionState>("unsupported");
-
-  useEffect(() => {
-    void getReminderPermissionStatus().then(setPermission);
-  }, []);
-
-  async function enableReminders() {
-    const granted = await requestReminderPermission();
-    setPermission(granted ? "granted" : "denied");
-  }
-
-  const reminderMessage = permission === "granted"
-    ? "الإشعارات مفعّلة. ستظهر التذكيرات التي تحفظها مستقبلاً."
-    : permission === "denied"
-      ? "لم تمنح الإذن بعد. يمكنك طلبه مرة أخرى أو تفعيله من إعدادات الجهاز."
-      : "تعمل التنبيهات المحلية على هاتفك بعد تثبيت التطبيق.";
-
-  return (
-    <ScreenContainer style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>الإعدادات</Text>
-        <Text style={styles.subtitle}>خيارات وخصوصية التطبيق</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>تنبيهات المواعيد</Text>
-        <View style={styles.card}>
-          <View style={styles.iconBox}><Ionicons name="notifications-outline" color="#0B5CAD" size={22} /></View>
-          <View style={styles.copy}>
-            <Text style={styles.cardTitle}>{permission === "granted" ? "التنبيهات مفعّلة" : "ذكّرني بالمواعيد"}</Text>
-            <Text style={styles.cardBody}>{reminderMessage}</Text>
-            {permission !== "granted" && permission !== "unsupported" && (
-              <Pressable onPress={enableReminders} style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}>
-                <Text style={styles.permissionText}>تفعيل الإشعارات</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>الخصوصية</Text>
-        <View style={styles.card}>
-          <View style={styles.iconBox}><Ionicons name="phone-portrait-outline" color="#0B5CAD" size={22} /></View>
-          <View style={styles.copy}>
-            <Text style={styles.cardTitle}>بياناتك على جهازك</Text>
-            <Text style={styles.cardBody}>تُحفَظ المعاملات التي تضيفها محلياً على هذا الجهاز. لا يتصل التطبيق بمنصة حكومية أو يرسل سجلاتك إلى خادم.</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>عن التطبيق</Text>
-        <View style={styles.aboutRow}>
-          <Text style={styles.version}>الإصدار 1.0</Text>
-          <Text style={styles.cardTitle}>متابع المعاملات الحكومية</Text>
-        </View>
-      </View>
-    </ScreenContainer>
-  );
+  useEffect(() => { void getReminderPermissionStatus().then(setPermission); }, []);
+  async function enableReminders() { const granted = await requestReminderPermission(); setPermission(granted ? "granted" : "denied"); }
+  const reminderMessage = permission === "granted" ? "الإشعارات مفعّلة. ستظهر التذكيرات التي تحفظها مستقبلاً." : permission === "denied" ? "لم تمنح الإذن بعد. يمكنك طلبه مرة أخرى أو تفعيله من إعدادات الجهاز." : "تعمل التنبيهات المحلية على هاتفك بعد تثبيت التطبيق.";
+  return <ScreenContainer style={styles.container}>
+    <View style={styles.header}><Text style={styles.title}>الإعدادات</Text><Text style={styles.subtitle}>خيارات وخصوصية أبو مشعل</Text></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>دور المعاينة المحلي</Text><View style={styles.card}><View style={styles.copy}><Text style={styles.cardTitle}>مساحة الاستخدام</Text><Text style={styles.cardBody}>هذا الاختيار للمعاينة فقط. تُفرض الصلاحيات الفعلية من الحساب والخادم عند التشغيل الإنتاجي.</Text><View style={styles.roleChoices}>{roles.map((item) => <Pressable key={item.value} onPress={() => void setRole(item.value)} style={({ pressed }) => [styles.roleChoice, role === item.value && styles.roleChoiceActive, pressed && styles.pressed]}><Text style={[styles.roleText, role === item.value && styles.roleTextActive]}>{item.label}</Text></Pressable>)}</View>{role !== "customer" && <Pressable onPress={() => router.push("/operations" as never)} style={({ pressed }) => [styles.operationsButton, pressed && styles.pressed]}><Text style={styles.operationsText}>فتح مساحة التشغيل</Text></Pressable>}</View></View></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>تنبيهات المواعيد</Text><View style={styles.card}><View style={styles.iconBox}><Ionicons name="notifications-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><Text style={styles.cardTitle}>{permission === "granted" ? "التنبيهات مفعّلة" : "ذكّرني بالمواعيد"}</Text><Text style={styles.cardBody}>{reminderMessage}</Text>{permission !== "granted" && permission !== "unsupported" && <Pressable onPress={enableReminders} style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}><Text style={styles.permissionText}>تفعيل الإشعارات</Text></Pressable>}</View></View></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>الخصوصية</Text><View style={styles.card}><View style={styles.iconBox}><Ionicons name="phone-portrait-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><Text style={styles.cardTitle}>بياناتك على جهازك</Text><Text style={styles.cardBody}>تُحفَظ بيانات المعاينة محلياً على هذا الجهاز. أبو مشعل منصة مستقلة ولا يتصل بمنصة حكومية.</Text></View></View></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>عن التطبيق</Text><View style={styles.aboutRow}><Text style={styles.version}>الإصدار 1.0</Text><Text style={styles.cardTitle}>أبو مشعل · متابعة المعاملات والمهام</Text></View></View>
+  </ScreenContainer>;
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 20 },
-  header: { alignItems: "flex-end", marginBottom: 28 },
-  title: { color: "#172033", fontSize: 24, fontWeight: "800", writingDirection: "rtl" },
-  subtitle: { color: "#667085", fontSize: 13, marginTop: 5, writingDirection: "rtl" },
-  section: { marginBottom: 26 },
-  sectionTitle: { color: "#667085", fontSize: 13, fontWeight: "800", marginBottom: 10, textAlign: "right", writingDirection: "rtl" },
-  card: { alignItems: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#E6EAF0", borderRadius: 20, borderWidth: 1, flexDirection: "row-reverse", gap: 12, padding: 16 },
-  iconBox: { alignItems: "center", backgroundColor: "#EAF3FF", borderRadius: 12, height: 42, justifyContent: "center", width: 42 },
-  copy: { alignItems: "flex-end", flex: 1 },
-  cardTitle: { color: "#172033", fontSize: 14, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },
-  cardBody: { color: "#667085", fontSize: 13, lineHeight: 20, marginTop: 5, textAlign: "right", writingDirection: "rtl" },
-  permissionButton: { alignSelf: "flex-end", backgroundColor: "#0B5CAD", borderRadius: 10, marginTop: 12, paddingHorizontal: 12, paddingVertical: 9 },
-  permissionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", writingDirection: "rtl" },
-  aboutRow: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E6EAF0", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", justifyContent: "space-between", padding: 16 },
-  version: { color: "#667085", fontSize: 12, writingDirection: "rtl" },
-  pressed: { opacity: 0.72 },
-});
+const styles = StyleSheet.create({ container: { padding: 20 }, header: { alignItems: "flex-end", marginBottom: 28 }, title: { color: "#17382F", fontSize: 24, fontWeight: "800", writingDirection: "rtl" }, subtitle: { color: "#66756E", fontSize: 13, marginTop: 5, writingDirection: "rtl" }, section: { marginBottom: 26 }, sectionTitle: { color: "#66756E", fontSize: 13, fontWeight: "800", marginBottom: 10, textAlign: "right", writingDirection: "rtl" }, card: { alignItems: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#E1E9E3", borderRadius: 20, borderWidth: 1, flexDirection: "row-reverse", gap: 12, padding: 16 }, iconBox: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 12, height: 42, justifyContent: "center", width: 42 }, copy: { alignItems: "flex-end", flex: 1 }, cardTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", textAlign: "right", writingDirection: "rtl" }, cardBody: { color: "#66756E", fontSize: 13, lineHeight: 20, marginTop: 5, textAlign: "right", writingDirection: "rtl" }, roleChoices: { flexDirection: "row-reverse", gap: 8, marginTop: 13 }, roleChoice: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 }, roleChoiceActive: { backgroundColor: "#E9F5EC", borderColor: "#0B5D45" }, roleText: { color: "#66756E", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, roleTextActive: { color: "#0B5D45" }, operationsButton: { alignSelf: "flex-end", backgroundColor: "#0B5D45", borderRadius: 10, marginTop: 12, paddingHorizontal: 12, paddingVertical: 9 }, operationsText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, permissionButton: { alignSelf: "flex-end", backgroundColor: "#0B5D45", borderRadius: 10, marginTop: 12, paddingHorizontal: 12, paddingVertical: 9 }, permissionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, aboutRow: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E1E9E3", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", justifyContent: "space-between", padding: 16 }, version: { color: "#66756E", fontSize: 12, writingDirection: "rtl" }, pressed: { opacity: 0.72 }, });

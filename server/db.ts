@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, InsertServiceRequest, InsertTransactionRecord, serviceRequests, transactions, users } from "../drizzle/schema";
+import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +90,48 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function createServiceRequest(input: Omit<InsertServiceRequest, "requestNumber" | "customerUserId"> & { customerUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const requestNumber = `AM-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  const result = await db.insert(serviceRequests).values({ ...input, requestNumber });
+  return { id: result[0].insertId, requestNumber };
+}
+
+export async function listServiceRequests(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select().from(serviceRequests).orderBy(desc(serviceRequests.updatedAt));
+  return canOperateTransactions(role) ? query : query.where(eq(serviceRequests.customerUserId, userId));
+}
+
+export async function createTransaction(input: InsertTransactionRecord) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(transactions).values(input);
+  return result[0].insertId;
+}
+
+export async function listTransactions(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select().from(transactions).orderBy(desc(transactions.updatedAt));
+  return canOperateTransactions(role) ? query : query.where(eq(transactions.customerUserId, userId));
+}
+
+export async function getTransactionById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateTransactionStatus(id: number, status: InsertTransactionRecord["status"], nextAction?: string, assigneeUserId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(transactions).set({ status, nextAction, assigneeUserId }).where(eq(transactions.id, id));
+}
+
+export function assertCanManage(role: string) {
+  if (!canManageOperations(role)) throw new Error("FORBIDDEN_OPERATION");
+}

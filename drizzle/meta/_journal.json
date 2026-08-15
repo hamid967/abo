@@ -8,6 +8,20 @@
       "when": 1763372440610,
       "tag": "0000_elite_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1786755900467,
+      "tag": "0001_sharp_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786756696815,
+      "tag": "0002_tense_newton_destine",
+      "breakpoints": true
     }
   ]
 }

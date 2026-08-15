@@ -1,7 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
-import { GovernmentTransaction } from "@/lib/transactions";
+import { GovernmentTransaction, isTerminalStatus } from "@/lib/transactions";
 import { canScheduleReminder, getReminderTriggerDate, ReminderSettings } from "@/lib/reminders";
 
 const DEADLINE_CHANNEL_ID = "government-deadlines";
@@ -26,7 +26,7 @@ async function configureAndroidChannel() {
     description: "تنبيهات محلية لمواعيد انتهاء ومتابعة المعاملات الحكومية",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 150, 200],
-    lightColor: "#0B5CAD",
+    lightColor: "#0B5D45",
   });
 }
 
@@ -52,7 +52,7 @@ export async function cancelTransactionReminder(reminder?: ReminderSettings) {
 
 export async function scheduleTransactionReminder(transaction: GovernmentTransaction): Promise<ReminderSettings | undefined> {
   const reminder = transaction.reminder;
-  if (!reminder?.enabled || transaction.status === "completed" || !canScheduleReminder(transaction.dueDate, reminder.daysBefore, reminder.hour, reminder.minute)) {
+  if (!reminder?.enabled || isTerminalStatus(transaction.status) || !canScheduleReminder(transaction.dueDate, reminder.daysBefore, reminder.hour, reminder.minute)) {
     return reminder ? { ...reminder, notificationId: undefined } : undefined;
   }
   if (Platform.OS === "web") return { ...reminder, notificationId: undefined };
@@ -66,7 +66,7 @@ export async function scheduleTransactionReminder(transaction: GovernmentTransac
   await configureAndroidChannel();
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
-      title: "تذكير بموعد معاملة حكومية",
+      title: "تذكير من أبو مشعل",
       body: `موعد متابعة «${transaction.title}» هو ${transaction.dueDate}.`,
       data: { transactionId: transaction.id },
       sound: true,
