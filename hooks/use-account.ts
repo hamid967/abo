@@ -3,13 +3,13 @@ import { createContext, createElement, PropsWithChildren, useContext, useMemo } 
 import { useAuth } from "@/hooks/use-auth";
 import { trpc } from "@/lib/trpc";
 
-export type AccountRole = "customer" | "employee" | "supervisor";
+export type AccountRole = "customer" | "employee" | "supervisor" | "admin" | "super_admin";
 type AccountContextValue = ReturnType<typeof buildAccountValue>;
 const AccountContext = createContext<AccountContextValue | undefined>(undefined);
 
 function buildAccountValue(auth: ReturnType<typeof useAuth>, accountData: { role?: string } | null | undefined, accountLoading: boolean) {
   const rawRole = accountData?.role;
-  const role: AccountRole = rawRole === "employee" ? "employee" : rawRole === "supervisor" || rawRole === "admin" || rawRole === "super_admin" ? "supervisor" : "customer";
+  const role: AccountRole = rawRole === "employee" || rawRole === "supervisor" || rawRole === "admin" || rawRole === "super_admin" ? rawRole : "customer";
   return { ...auth, role, account: accountData, isAccountLoading: auth.loading || (auth.isAuthenticated && accountLoading) };
 }
 

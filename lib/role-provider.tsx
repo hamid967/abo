@@ -3,7 +3,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useSt
 
 import { useAccount } from "@/hooks/use-account";
 
-export type AppRole = "customer" | "employee" | "supervisor";
+export type AppRole = "customer" | "employee" | "supervisor" | "admin" | "super_admin";
 const ROLE_KEY = "abu-mishal-preview-role:v1";
 const RoleContext = createContext<{ role: AppRole; setRole: (role: AppRole) => Promise<void>; isLoading: boolean } | undefined>(undefined);
 

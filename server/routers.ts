@@ -4,7 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { canAccessCustomerRecord, canManageOperations } from "./authorization";
+import { canAccessCustomerRecord, canManageOperations, canViewSystemDashboard } from "./authorization";
 import * as db from "./db";
 import { answerGuidanceQuestion } from "./abu-mishal-assistant";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
@@ -97,6 +97,12 @@ export const appRouter = router({
       const { key, url } = await storagePut(`abu-mishal/${ctx.user.id}/documents/${Date.now()}-${safeName}`, bytes, input.mimeType);
       const id = await db.createUploadedDocument({ ownerUserId: ctx.user.id, fileName: input.fileName, storageKey: key, mimeType: input.mimeType, fileSizeBytes: bytes.length });
       return { id, key, url, fileSizeBytes: bytes.length };
+    }),
+  }),
+  adminDashboard: router({
+    overview: protectedProcedure.input(z.object({ status: transactionStatusSchema.optional() })).query(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      return db.getSystemTransactionDashboard(input.status);
     }),
   }),
 });
