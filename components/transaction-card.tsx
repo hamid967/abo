@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { StatusPill } from "@/components/status-pill";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { GovernmentTransaction, isTransactionOverdue, statusDetails, TransactionStatus } from "@/lib/transactions";
 
 type TransactionCardProps = {
@@ -24,6 +25,7 @@ function getStage(status: TransactionStatus) {
 }
 
 export function TransactionCard({ transaction, onPress }: TransactionCardProps) {
+  const motion = useReducedMotion();
   const computedStatus = isTransactionOverdue(transaction) ? "overdue" : transaction.status;
   const detail = statusDetails[computedStatus];
   const stage = getStage(computedStatus);
@@ -37,7 +39,7 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
         : { color: "#0B5CAD", soft: "#EAF3FF", icon: "sync-outline" as const };
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { borderRightColor: visual.color }, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { borderRightColor: visual.color }, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}>
       <View style={styles.topRow}>
         <View style={styles.titleBlock}>
           <Text numberOfLines={1} style={styles.title}>{transaction.title}</Text>
@@ -77,6 +79,7 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
 const styles = StyleSheet.create({
   card: { backgroundColor: "#FFFFFF", borderColor: "#DCE8DF", borderRadius: 20, borderRightWidth: 5, borderWidth: 1, marginBottom: 12, padding: 16 },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
+  pressedReduced: { opacity: 0.72 },
   topRow: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 12, justifyContent: "space-between" },
   titleBlock: { alignItems: "flex-end", flex: 1, gap: 4 },
   title: { color: "#172033", fontSize: 16, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },

@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useLocale } from "@/lib/locale-provider";
 
 const logo = require("@/assets/images/icon.png");
@@ -14,7 +15,9 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const { preview } = useLocalSearchParams<{ preview?: string }>();
   const { isArabic, direction } = useLocale();
+  const motion = useReducedMotion();
   const [ready, setReady] = useState(preview === "1");
+  const entrance = useRef(new Animated.Value(0)).current;
   const isPreview = preview === "1";
   const text = isArabic
     ? {
@@ -49,19 +52,30 @@ export default function WelcomeScreen() {
     });
   }, [isPreview, router]);
 
+  useEffect(() => {
+    if (!ready || !motion.isReady) return;
+    if (motion.reducedMotion) {
+      entrance.setValue(1);
+      return;
+    }
+    entrance.setValue(0);
+    Animated.timing(entrance, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [entrance, motion.isReady, motion.reducedMotion, ready]);
+
   const finishIntro = (destination: "/(tabs)" | "/request/new" | "/account") => {
     if (!isPreview) void AsyncStorage.setItem(INTRO_SEEN_KEY, "true");
     router.replace(destination as never);
   };
 
-  if (!ready) return <ScreenContainer edges={["top", "bottom", "left", "right"]} containerClassName="bg-background" />;
+  if (!ready || !motion.isReady) return <ScreenContainer edges={["top", "bottom", "left", "right"]} containerClassName="bg-background" />;
 
   return (
     <ScreenContainer edges={["top", "bottom", "left", "right"]} containerClassName="bg-background">
+      <Animated.View style={{ flex: 1, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [motion.reducedMotion ? 0 : 12, 0] }) }] }}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.topLine, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
           <View style={styles.brandPill}><Image source={logo} style={styles.smallLogo} /><Text style={[styles.brandPillText, { writingDirection: direction }]}>{text.eyebrow}</Text></View>
-          <Pressable onPress={() => finishIntro("/(tabs)")} style={({ pressed }) => [styles.skip, pressed && styles.pressed]}><Text style={[styles.skipText, { writingDirection: direction }]}>{isArabic ? "تخطي" : "Skip"}</Text></Pressable>
+          <Pressable onPress={() => finishIntro("/(tabs)")} style={({ pressed }) => [styles.skip, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}><Text style={[styles.skipText, { writingDirection: direction }]}>{isArabic ? "تخطي" : "Skip"}</Text></Pressable>
         </View>
 
         <View style={styles.hero}>
@@ -77,12 +91,13 @@ export default function WelcomeScreen() {
         </View>
 
         <View style={styles.actions}>
-          <Pressable onPress={() => finishIntro("/request/new")} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><Text style={[styles.primaryActionText, { writingDirection: direction }]}>{text.primary}</Text><Ionicons name={isArabic ? "arrow-back" : "arrow-forward"} size={18} color="#FFFFFF" /></Pressable>
-          <Pressable onPress={() => finishIntro("/account")} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}><Text style={[styles.secondaryActionText, { writingDirection: direction }]}>{text.secondary}</Text></Pressable>
+          <Pressable onPress={() => finishIntro("/request/new")} style={({ pressed }) => [styles.primaryAction, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}><Text style={[styles.primaryActionText, { writingDirection: direction }]}>{text.primary}</Text><Ionicons name={isArabic ? "arrow-back" : "arrow-forward"} size={18} color="#FFFFFF" /></Pressable>
+          <Pressable onPress={() => finishIntro("/account")} style={({ pressed }) => [styles.secondaryAction, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}><Text style={[styles.secondaryActionText, { writingDirection: direction }]}>{text.secondary}</Text></Pressable>
         </View>
 
         <View style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Ionicons name="shield-checkmark-outline" size={16} color="#5C6F64" /><Text style={[styles.noticeText, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{text.notice}</Text></View>
       </ScrollView>
+      </Animated.View>
     </ScreenContainer>
   );
 }
@@ -116,4 +131,5 @@ const styles = StyleSheet.create({
   notice: { alignItems: "flex-start", gap: 7, marginTop: 20, paddingHorizontal: 6 },
   noticeText: { color: "#65766D", flex: 1, fontSize: 11, lineHeight: 17 },
   pressed: { opacity: 0.82, transform: [{ scale: 0.98 }] },
+  pressedReduced: { opacity: 0.82 },
 });
