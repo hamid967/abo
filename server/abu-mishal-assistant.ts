@@ -22,13 +22,13 @@ export async function answerGuidanceQuestion(question: string, language: "ar" | 
   const response = await invokeLLM({
     model: "gpt-5-mini",
     messages: [
-      { role: "system", content: language === "ar" ? `أنت مساعد أبو مشعل، منصة سعودية مستقلة لمتابعة المعاملات والمهام. أجب بالعربية الفصحى المبسطة وباختصار، واعتمد حصراً على مصادر المعرفة التالية. لا تستنتج حقائق خارجها؛ إن لم تكن الإجابة فيها، قل بوضوح إن المعلومة غير متاحة في المصادر المعتمدة واقترح فتح تذكرة دعم. لا تدّعِ تمثيل أي جهة حكومية، ولا تؤكد قبول معاملة، ولا تقدم فتوى قانونية أو معلومات غير مؤكدة. لا تطلب بيانات هوية أو كلمات مرور أو معلومات حساسة. عند الاستناد إلى مادة، اذكر عنوان المصدر في آخر الجواب.\n\nمصادر المعرفة المعتمدة:\n${sourceContext}` : `You are Abu Mishal Assistant, an independent Saudi platform for tracking requests and tasks. Answer briefly in clear English and rely exclusively on the approved knowledge sources below. Do not infer facts outside them; if the answer is absent, state that clearly and suggest opening a support ticket. Do not claim to represent a government entity, confirm approval of a request, provide binding legal advice, or request identity, password, or sensitive information. Name a source title at the end when using one.\n\nApproved knowledge sources:\n${sourceContext}` },
+      { role: "system", content: language === "ar" ? `أنت مساعد أبو مشعل، منصة سعودية مستقلة لمتابعة المعاملات والمهام. أجب بلهجة سعودية مهنية واضحة وباختصار، واعتمد حصراً على مصادر المعرفة التالية. لا تستنتج حقائق خارجها؛ إن لم تكن الإجابة فيها، قل بوضوح إن المعلومة غير متاحة في المصادر المعتمدة واقترح فتح تذكرة دعم. لا تدّعِ تمثيل أي جهة حكومية، ولا تؤكد قبول معاملة، ولا تقدم فتوى قانونية أو معلومات غير مؤكدة. لا تطلب بيانات هوية أو كلمات مرور أو معلومات حساسة. عند الاستناد إلى مادة، اذكر عنوان المصدر في آخر الجواب.\n\nمصادر المعرفة المعتمدة:\n${sourceContext}` : `You are Abu Mishal Assistant, an independent Saudi platform for tracking requests and tasks. Answer briefly in clear English and rely exclusively on the approved knowledge sources below. Do not infer facts outside them; if the answer is absent, state that clearly and suggest opening a support ticket. Do not claim to represent a government entity, confirm approval of a request, provide binding legal advice, or request identity, password, or sensitive information. Name a source title at the end when using one.\n\nApproved knowledge sources:\n${sourceContext}` },
       { role: "user", content: question },
     ],
   });
   const content = response.choices[0]?.message?.content;
   return {
-    answer: (typeof content === "string" ? content.trim() : "") || "تعذر إعداد رد إرشادي الآن. يمكنك تحويل الاستفسار إلى موظف للمراجعة.",
+    answer: (typeof content === "string" ? content.trim() : "") || "ما قدرنا نجهز رد إرشادي الآن. تقدر تحوّل استفسارك لموظف عشان يراجعه.",
     sources: sources.slice(0, 6),
   };
 }
@@ -44,12 +44,12 @@ export async function guideRequestIntake(input: {
     ? { service: "نوع الخدمة", agency: "الجهة المرجعية", title: "عنوان الطلب", description: "وصف الطلب" }[input.stage]
     : { service: "service type", agency: "reference agency", title: "request title", description: "request description" }[input.stage];
   const fallback = input.language === "ar"
-    ? { reply: `تم تسجيل ما ذكرت بخصوص ${stageLabel}. سنراجع البيانات معك قبل إنشاء الطلب، ولا يعني ذلك قبولاً من أي جهة.`, tip: "لا تكتب رقم الهوية أو كلمة المرور أو رمز التحقق أو بيانات البطاقة في المحادثة." }
+    ? { reply: `سجّلنا اللي ذكرته بخصوص ${stageLabel}. بنراجع البيانات معك قبل إنشاء الطلب، وهذا ما يعني قبول الطلب من أي جهة.`, tip: "عشان نحافظ على خصوصيتك، لا تكتب رقم الهوية أو كلمة المرور أو رمز التحقق أو بيانات البطاقة في المحادثة." }
     : { reply: `Your input for the ${stageLabel} has been recorded. You will review everything before the request is created; this does not confirm acceptance by any authority.`, tip: "Do not enter an ID number, password, verification code, or card details in chat." };
 
   if (containsSensitiveIntakeData(input.message)) {
     return input.language === "ar"
-      ? { reply: "حفاظاً على خصوصيتك، لا يمكن معالجة هذه الرسالة داخل المحادثة. احذف الأرقام أو البيانات الحساسة واكتب وصفاً عاماً فقط.", tip: "أدخل الاسم ورقم الجوال لاحقاً في حقول المراجعة المخصصة، ولا تكتب كلمة مرور أو رمز تحقق." }
+      ? { reply: "عشان نحافظ على خصوصيتك، ما نقدر نعالج هالرسالة داخل المحادثة. احذف الأرقام أو البيانات الحساسة واكتب وصفاً عاماً فقط.", tip: "اكتب الاسم ورقم الجوال لاحقاً في حقول المراجعة المخصصة، ولا تكتب كلمة مرور أو رمز تحقق." }
       : { reply: "For your privacy, this message cannot be processed in chat. Remove numbers or sensitive data and provide a general description only.", tip: "Enter the name and mobile number later in the dedicated review fields; never enter a password or verification code." };
   }
 
