@@ -11,7 +11,8 @@ vi.mock("../server/db", () => ({
   })),
 }));
 
-import { answerGuidanceQuestion } from "../server/abu-mishal-assistant";
+import { answerGuidanceQuestion, containsSensitiveIntakeData, guideRequestIntake } from "../server/abu-mishal-assistant";
+import { invokeLLM } from "../server/_core/llm";
 
 describe("Abu Mishal guidance assistant", () => {
   it("returns the model answer with published knowledge sources", async () => {
@@ -19,5 +20,18 @@ describe("Abu Mishal guidance assistant", () => {
     expect(result.answer).toContain("إرشادية");
     expect(result.sources).toHaveLength(1);
     expect(result.sources[0].title).toBe("دليل الطلبات");
+  });
+
+  it("returns structured intake guidance without adding a request", async () => {
+    vi.mocked(invokeLLM).mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ reply: "تم تسجيل نوع الخدمة.", tip: "راجع الملخص قبل الإرسال." }) } }] } as never);
+    const result = await guideRequestIntake({ message: "متابعة معاملة", stage: "service", language: "ar", context: {} });
+    expect(result.reply).toBe("تم تسجيل نوع الخدمة.");
+    expect(result.tip).toContain("راجع");
+  });
+
+  it("blocks sensitive data before it reaches the model", async () => {
+    expect(containsSensitiveIntakeData("رقم هويتي 1234567890")).toBe(true);
+    const result = await guideRequestIntake({ message: "رمز التحقق 123456", stage: "description", language: "ar", context: {} });
+    expect(result.reply).toContain("خصوصيتك");
   });
 });

@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { canAccessCustomerRecord, canManageKnowledge, canManageOperations, canOperateTransactions, canViewAuditLogs, canViewSystemDashboard } from "./authorization";
 import * as db from "./db";
-import { answerGuidanceQuestion } from "./abu-mishal-assistant";
+import { answerGuidanceQuestion, guideRequestIntake, requestIntakeStageSchema } from "./abu-mishal-assistant";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
 import { storagePut } from "./storage";
 
@@ -79,6 +79,21 @@ export const appRouter = router({
     ask: protectedProcedure.input(z.object({ question: z.string().trim().min(3).max(1200), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
       const response = await answerGuidanceQuestion(input.question, input.language);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.guidance_question", resourceType: "assistant", metadata: { questionLength: input.question.length, sourceCount: response.sources.length } });
+      return response;
+    }),
+    intakeGuide: protectedProcedure.input(z.object({
+      message: z.string().trim().min(1).max(1200),
+      stage: requestIntakeStageSchema,
+      language: z.enum(["ar", "en"]).default("ar"),
+      context: z.object({
+        serviceType: z.string().trim().max(180).optional(),
+        agency: z.string().trim().max(180).optional(),
+        title: z.string().trim().max(255).optional(),
+        description: z.string().trim().max(1000).optional(),
+      }),
+    })).mutation(async ({ ctx, input }) => {
+      const response = await guideRequestIntake(input);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.request_intake_guidance", resourceType: "assistant", metadata: { stage: input.stage, messageLength: input.message.length } });
       return response;
     }),
   }),
