@@ -73,6 +73,7 @@ export default function NewRequestScreen() {
         beneficiaryType,
         title: title.trim(),
         description: [description.trim(), `الخدمة: ${serviceType}`, `الجهة المرجعية: ${agency}`, reference.trim() ? `المرجع: ${reference.trim()}` : ""].filter(Boolean).join("\n"),
+        customerPhone: customerPhone.trim(),
         city: city.trim() || undefined,
         priority,
         desiredDueAt: dueDate ? new Date(`${dueDate}T12:00:00`) : undefined,

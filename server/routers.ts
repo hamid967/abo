@@ -35,6 +35,7 @@ export const appRouter = router({
       beneficiaryType: beneficiaryTypeSchema,
       title: z.string().trim().min(3).max(255),
       description: z.string().trim().max(4000).optional(),
+      customerPhone: z.string().trim().min(8).max(32).optional(),
       city: z.string().trim().max(120).optional(),
       priority: prioritySchema.default("normal"),
       organizationId: z.number().int().positive().optional(),

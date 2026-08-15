@@ -29,6 +29,13 @@
       "when": 1786757196412,
       "tag": "0003_faulty_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786759869175,
+      "tag": "0004_bouncy_vampiro",
+      "breakpoints": true
     }
   ]
 }

@@ -75,6 +75,7 @@ export const serviceRequests = mysqlTable("service_requests", {
   beneficiaryType: mysqlEnum("beneficiaryType", ["individual", "establishment", "company", "association", "nonprofit", "representative"]).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
+  customerPhone: varchar("customerPhone", { length: 32 }),
   city: varchar("city", { length: 120 }),
   priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
   status: mysqlEnum("status", ["draft", "submitted", "under_review", "converted", "cancelled"]).default("draft").notNull(),
@@ -82,7 +83,7 @@ export const serviceRequests = mysqlTable("service_requests", {
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, (table) => [uniqueIndex("service_requests_number_unique").on(table.requestNumber), index("service_requests_customer_idx").on(table.customerUserId), index("service_requests_status_idx").on(table.status), foreignKey({ columns: [table.customerUserId], foreignColumns: [users.id], name: "service_requests_customer_fk" }).onDelete("restrict"), foreignKey({ columns: [table.organizationId], foreignColumns: [organizations.id], name: "service_requests_organization_fk" }).onDelete("set null"), foreignKey({ columns: [table.serviceId], foreignColumns: [governmentServices.id], name: "service_requests_service_fk" }).onDelete("set null")]);
+}, (table) => [uniqueIndex("service_requests_number_unique").on(table.requestNumber), index("service_requests_customer_idx").on(table.customerUserId), index("service_requests_status_idx").on(table.status), index("service_requests_phone_idx").on(table.customerPhone), foreignKey({ columns: [table.customerUserId], foreignColumns: [users.id], name: "service_requests_customer_fk" }).onDelete("restrict"), foreignKey({ columns: [table.organizationId], foreignColumns: [organizations.id], name: "service_requests_organization_fk" }).onDelete("set null"), foreignKey({ columns: [table.serviceId], foreignColumns: [governmentServices.id], name: "service_requests_service_fk" }).onDelete("set null")]);
 
 export const transactions = mysqlTable("transactions", {
   id: int("id").autoincrement().primaryKey(),
