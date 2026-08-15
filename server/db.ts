@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { cloudRecords, documents, InsertUser, InsertServiceRequest, InsertTransactionRecord, serviceRequests, transactions, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
@@ -157,7 +157,7 @@ export async function createUploadedDocument(input: { ownerUserId: number; fileN
   return result[0].insertId;
 }
 
-export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"]) {
+export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"], search?: string) {
   const db = await getDb();
   if (!db) return { metrics: { total: 0, active: 0, overdue: 0, awaitingDocuments: 0, completed: 0 }, transactions: [] };
   const grouped = await db.select({ status: transactions.status, total: count(transactions.id) }).from(transactions).groupBy(transactions.status);
@@ -165,7 +165,8 @@ export async function getSystemTransactionDashboard(status?: (typeof transaction
   const total = Object.values(statusTotals).reduce((sum, value) => sum + value, 0);
   const completed = statusTotals.completed ?? 0;
   const inactive = completed + (statusTotals.rejected ?? 0) + (statusTotals.cancelled ?? 0) + (statusTotals.archived ?? 0);
-  const rowQuery = db.select({ id: transactions.id, referenceNumber: transactions.referenceNumber, status: transactions.status, priority: transactions.priority, nextAction: transactions.nextAction, dueAt: transactions.dueAt, updatedAt: transactions.updatedAt, customerUserId: transactions.customerUserId, assigneeUserId: transactions.assigneeUserId }).from(transactions);
-  const rows = status ? await rowQuery.where(eq(transactions.status, status)).orderBy(desc(transactions.updatedAt)).limit(100) : await rowQuery.orderBy(desc(transactions.updatedAt)).limit(100);
+  const criteria = [status ? eq(transactions.status, status) : undefined, search ? or(like(transactions.referenceNumber, `%${search}%`), like(users.name, `%${search}%`)) : undefined].filter(Boolean);
+  const rowQuery = db.select({ id: transactions.id, referenceNumber: transactions.referenceNumber, status: transactions.status, priority: transactions.priority, nextAction: transactions.nextAction, dueAt: transactions.dueAt, updatedAt: transactions.updatedAt, customerUserId: transactions.customerUserId, customerName: users.name, assigneeUserId: transactions.assigneeUserId }).from(transactions).leftJoin(users, eq(transactions.customerUserId, users.id));
+  const rows = criteria.length ? await rowQuery.where(and(...criteria)).orderBy(desc(transactions.updatedAt)).limit(100) : await rowQuery.orderBy(desc(transactions.updatedAt)).limit(100);
   return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed }, transactions: rows };
 }

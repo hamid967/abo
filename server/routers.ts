@@ -100,9 +100,9 @@ export const appRouter = router({
     }),
   }),
   adminDashboard: router({
-    overview: protectedProcedure.input(z.object({ status: transactionStatusSchema.optional() })).query(async ({ ctx, input }) => {
+    overview: protectedProcedure.input(z.object({ status: transactionStatusSchema.optional(), search: z.string().trim().min(2).max(120).optional() })).query(async ({ ctx, input }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
-      return db.getSystemTransactionDashboard(input.status);
+      return db.getSystemTransactionDashboard(input.status, input.search);
     }),
   }),
 });
