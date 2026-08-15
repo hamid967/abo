@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, notInArray, or } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -10,6 +11,7 @@ import { consentTextHash, mayConfirmDraft, requestPolicyVersion } from "./reques
 import { formatRequestNumber, submissionMessage } from "./request-submission";
 import { canAttachDraftDocument } from "./draft-document-policy";
 import { handoffPriorityForReason, handoffSubject } from "./handoff-policy";
+import { classifyLoginSecurity, formatLoginSecurityAlert, normalizeDeviceId } from "./login-security";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -31,6 +33,8 @@ export async function createExpoGoOAuthAttempt(input: {
   proofHash: string;
   callbackState: string;
   expiresAt: Date;
+  deviceId?: string;
+  platform?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -62,6 +66,8 @@ export async function claimExpoGoOAuthAttempt(input: { id: string; proofHash: st
   const rows = await db.select({
     authorizationCode: expoGoOAuthAttempts.authorizationCode,
     callbackState: expoGoOAuthAttempts.callbackState,
+    deviceId: expoGoOAuthAttempts.deviceId,
+    platform: expoGoOAuthAttempts.platform,
   }).from(expoGoOAuthAttempts).where(and(
     eq(expoGoOAuthAttempts.id, input.id),
     eq(expoGoOAuthAttempts.proofHash, input.proofHash),
@@ -288,6 +294,39 @@ export async function updateTransactionStatus(id: number, status: InsertTransact
 
 export function assertCanManage(role: string) {
   if (!canManageOperations(role)) throw new Error("FORBIDDEN_OPERATION");
+}
+
+function securityHash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function networkFingerprint(req: { ip?: string; headers?: Record<string, unknown> }) {
+  const forwarded = typeof req.headers?.["x-forwarded-for"] === "string" ? req.headers["x-forwarded-for"].split(",")[0].trim() : "";
+  const ip = forwarded || req.ip || "unknown";
+  const normalized = ip.includes(".") ? ip.split(".").slice(0, 3).join(".") : ip;
+  return securityHash(normalized);
+}
+
+export async function recordLoginSecurityEvent(input: { userId: number; deviceId?: string | null; platform?: string | null; req: { ip?: string; headers?: Record<string, unknown> } }) {
+  const db = await getDb();
+  if (!db) return { isNewDevice: false, isUnusualNetwork: false };
+  const deviceFingerprint = securityHash(normalizeDeviceId(input.deviceId, input.platform, String(input.req.headers?.["user-agent"] || "unknown")));
+  const network = networkFingerprint(input.req);
+  const knownDevices = await db.select({ id: loginSecurityDevices.id, networkFingerprint: loginSecurityDevices.networkFingerprint }).from(loginSecurityDevices).where(eq(loginSecurityDevices.userId, input.userId)).limit(50);
+  const classification = classifyLoginSecurity(knownDevices, deviceFingerprint, network);
+  const existing = classification.existing;
+  const { isNewDevice, isUnusualNetwork } = classification;
+  if (existing) {
+    await db.update(loginSecurityDevices).set({ networkFingerprint: network, platform: input.platform ?? undefined, userAgent: String(input.req.headers?.["user-agent"] || "").slice(0, 512), lastSeenAt: new Date() }).where(eq(loginSecurityDevices.id, existing.id));
+  } else {
+    await db.insert(loginSecurityDevices).values({ id: deviceFingerprint, userId: input.userId, deviceFingerprint, networkFingerprint: network, platform: input.platform ?? undefined, userAgent: String(input.req.headers?.["user-agent"] || "").slice(0, 512) });
+  }
+  if (isNewDevice || isUnusualNetwork) {
+    const alert = formatLoginSecurityAlert({ isNewDevice, isUnusualNetwork, platform: input.platform ?? "unknown" });
+    await createInAppNotification({ recipientUserId: input.userId, title: alert.title, body: alert.body, type: alert.type, data: alert.data });
+    await createAuditLog({ actorUserId: input.userId, action: "auth.login_security_alert", resourceType: "login", metadata: { isNewDevice, isUnusualNetwork, platform: input.platform ?? "unknown" } });
+  }
+  return { isNewDevice, isUnusualNetwork };
 }
 
 export async function createAuditLog(input: { actorUserId?: number | null; action: string; resourceType: string; resourceId?: string | number | null; metadata?: unknown }) {

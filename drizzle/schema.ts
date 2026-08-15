@@ -28,9 +28,22 @@ export const users = mysqlTable("users", {
  * قصير العمر لتمرير نتيجة OAuth إلى Expo Go دون وضع رمز جلسة في رابط العودة.
  * لا يستعمل في التطبيقات الأصلية المبنية، ولا يحتفظ إلا برمز تفويض مؤقت.
  */
+export const loginSecurityDevices = mysqlTable("login_security_devices", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull(),
+  deviceFingerprint: varchar("deviceFingerprint", { length: 128 }).notNull(),
+  networkFingerprint: varchar("networkFingerprint", { length: 128 }).notNull(),
+  platform: varchar("platform", { length: 32 }),
+  userAgent: varchar("userAgent", { length: 512 }),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("login_security_device_unique").on(table.userId, table.deviceFingerprint), index("login_security_device_user_idx").on(table.userId), foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: "login_security_device_user_fk" }).onDelete("cascade")]);
+
 export const expoGoOAuthAttempts = mysqlTable("expo_go_oauth_attempts", {
   id: varchar("id", { length: 64 }).primaryKey(),
   proofHash: varchar("proofHash", { length: 64 }).notNull(),
+  deviceId: varchar("deviceId", { length: 128 }),
+  platform: varchar("platform", { length: 32 }),
   callbackState: varchar("callbackState", { length: 2048 }).notNull(),
   authorizationCode: text("authorizationCode"),
   status: mysqlEnum("status", ["pending", "ready", "exchanging", "failed"]).default("pending").notNull(),

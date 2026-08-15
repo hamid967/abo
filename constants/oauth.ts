@@ -1,5 +1,6 @@
 import * as Linking from "expo-linking";
 import * as ReactNative from "react-native";
+import * as SecureStore from "expo-secure-store";
 
 // Extract scheme from bundle ID (last segment timestamp, prefixed with "manus")
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
@@ -56,6 +57,22 @@ export function getApiBaseUrl(): string {
 
 export const SESSION_TOKEN_KEY = "app_session_token";
 export const USER_INFO_KEY = "manus-runtime-user-info";
+const DEVICE_ID_KEY = "abu-mishal-security-device-id";
+
+async function getSecurityDeviceId(): Promise<string> {
+  if (ReactNative.Platform.OS === "web") {
+    const existing = typeof localStorage !== "undefined" ? localStorage.getItem(DEVICE_ID_KEY) : null;
+    if (existing) return existing;
+    const generated = `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (typeof localStorage !== "undefined") localStorage.setItem(DEVICE_ID_KEY, generated);
+    return generated;
+  }
+  const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+  if (existing) return existing;
+  const generated = `${ReactNative.Platform.OS}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await SecureStore.setItemAsync(DEVICE_ID_KEY, generated);
+  return generated;
+}
 
 const encodeState = (value: string) => {
   if (typeof globalThis.btoa === "function") {
@@ -109,7 +126,8 @@ export async function startOAuthLogin(): Promise<ExpoGoLoginAttempt | null> {
   if (ReactNative.Platform.OS !== "web") {
     const baseUrl = getApiBaseUrl();
     if (!baseUrl) throw new Error("تعذر تحديد خادم تسجيل الدخول. أعد فتح التطبيق من رابط Expo Go الصحيح.");
-    const response = await fetch(`${baseUrl}/api/oauth/expo-go/attempt`, { method: "POST" });
+    const deviceId = await getSecurityDeviceId();
+    const response = await fetch(`${baseUrl}/api/oauth/expo-go/attempt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deviceId, platform: ReactNative.Platform.OS }) });
     if (!response.ok) throw new Error("تعذر بدء تسجيل الدخول. حاول مرة أخرى.");
     const attempt = await response.json() as ExpoGoLoginAttempt & { redirectUri: string };
     const loginUrl = getLoginUrl(attempt.redirectUri);

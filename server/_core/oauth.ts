@@ -1,7 +1,7 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
-import { claimExpoGoOAuthAttempt, createExpoGoOAuthAttempt, failExpoGoOAuthAttempt, getUserByOpenId, markExpoGoOAuthAttemptReady, removeExpoGoOAuthAttempt, upsertUser } from "../db";
+import { claimExpoGoOAuthAttempt, createExpoGoOAuthAttempt, failExpoGoOAuthAttempt, getUserByOpenId, markExpoGoOAuthAttemptReady, recordLoginSecurityEvent, removeExpoGoOAuthAttempt, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 
@@ -104,9 +104,11 @@ export function registerOAuthRoutes(app: Express) {
     try {
       const id = randomUUID();
       const proof = randomBytes(32).toString("base64url");
+      const deviceId = typeof req.body?.deviceId === "string" ? req.body.deviceId.slice(0, 128) : undefined;
+      const platform = typeof req.body?.platform === "string" ? req.body.platform.slice(0, 32) : undefined;
       const redirectUri = getExpoGoCallbackUrl(req, id);
       const callbackState = encodeOAuthState(redirectUri);
-      await createExpoGoOAuthAttempt({ id, proofHash: hashProof(proof), callbackState, expiresAt: new Date(Date.now() + EXPO_GO_ATTEMPT_TTL_MS) });
+      await createExpoGoOAuthAttempt({ id, proofHash: hashProof(proof), callbackState, expiresAt: new Date(Date.now() + EXPO_GO_ATTEMPT_TTL_MS), deviceId, platform });
       res.status(201).json({ attemptId: id, proof, redirectUri });
     } catch (error) {
       console.error("[OAuth] Failed to create Expo Go attempt", error);
@@ -156,6 +158,8 @@ export function registerOAuthRoutes(app: Express) {
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
       const user = await syncUser(userInfo);
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, { name: userInfo.name || "", expiresInMs: ONE_YEAR_MS });
+      const userId = (user as { id?: number }).id;
+      if (typeof userId === "number") await recordLoginSecurityEvent({ userId, deviceId: attempt.deviceId, platform: attempt.platform, req });
       await removeExpoGoOAuthAttempt(attemptId);
       res.json({ status: "completed", app_session_id: sessionToken, user: buildUserResponse(user) });
     } catch (error) {
@@ -177,7 +181,9 @@ export function registerOAuthRoutes(app: Express) {
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      await syncUser(userInfo);
+      const user = await syncUser(userInfo);
+      const userId = (user as { id?: number }).id;
+      if (typeof userId === "number") await recordLoginSecurityEvent({ userId, platform: "web", req });
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -212,6 +218,8 @@ export function registerOAuthRoutes(app: Express) {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
       const user = await syncUser(userInfo);
+      const userId = (user as { id?: number }).id;
+      if (typeof userId === "number") await recordLoginSecurityEvent({ userId, platform: "mobile", req });
 
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
         name: userInfo.name || "",
