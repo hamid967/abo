@@ -24,6 +24,21 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+/**
+ * قصير العمر لتمرير نتيجة OAuth إلى Expo Go دون وضع رمز جلسة في رابط العودة.
+ * لا يستعمل في التطبيقات الأصلية المبنية، ولا يحتفظ إلا برمز تفويض مؤقت.
+ */
+export const expoGoOAuthAttempts = mysqlTable("expo_go_oauth_attempts", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  proofHash: varchar("proofHash", { length: 64 }).notNull(),
+  callbackState: varchar("callbackState", { length: 2048 }).notNull(),
+  authorizationCode: text("authorizationCode"),
+  status: mysqlEnum("status", ["pending", "ready", "exchanging", "failed"]).default("pending").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("expo_go_oauth_attempts_expiry_idx").on(table.expiresAt)]);
+
 export const organizations = mysqlTable("organizations", {
   id: int("id").autoincrement().primaryKey(),
   ownerUserId: int("ownerUserId").notNull(),

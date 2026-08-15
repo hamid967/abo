@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:metro\"",
+    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:metro\"",
     "dev:server": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
     "dev:metro": "cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 sh -c 'tail -f /dev/null | script -q -c \"npx expo start --go --lan --max-workers 2 --port ${EXPO_PORT:-8081}\" /dev/null'",
     "build": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",

@@ -1,17 +1,56 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { AppText as Text } from "@/components/ui/app-text";
 import { useAccount } from "@/hooks/use-account";
-import { startOAuthLogin } from "@/constants/oauth";
+import { completeExpoGoLogin, type ExpoGoLoginAttempt, startOAuthLogin } from "@/constants/oauth";
+import * as Auth from "@/lib/_core/auth";
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { user, isAuthenticated, isAccountLoading, logout, role } = useAccount();
+  const { user, isAuthenticated, isAccountLoading, logout, refresh, role } = useAccount();
+  const [loginAttempt, setLoginAttempt] = useState<ExpoGoLoginAttempt | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  async function signIn() { await startOAuthLogin(); }
+  useEffect(() => {
+    if (!loginAttempt) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const result = await completeExpoGoLogin(loginAttempt);
+        if (cancelled) return;
+        if (result.status === "pending") {
+          timer = setTimeout(() => void poll(), 1500);
+          return;
+        }
+        if (!result.sessionToken || !result.user) throw new Error("لم تصل جلسة تسجيل دخول صالحة.");
+        await Auth.setSessionToken(result.sessionToken);
+        await Auth.setUserInfo({ ...result.user, lastSignedIn: new Date(result.user.lastSignedIn) });
+        await refresh();
+        if (!cancelled) setLoginAttempt(null);
+      } catch (error) {
+        if (cancelled) return;
+        setLoginAttempt(null);
+        setLoginError(error instanceof Error ? error.message : "تعذر إكمال تسجيل الدخول.");
+      }
+    };
+    void poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [loginAttempt, refresh]);
+
+  async function signIn() {
+    setLoginError(null);
+    try {
+      const attempt = await startOAuthLogin();
+      if (attempt) setLoginAttempt(attempt);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "تعذر بدء تسجيل الدخول.");
+    }
+  }
   async function signOut() { await logout(); router.replace("/(tabs)"); }
 
   return <ScreenContainer edges={["top", "bottom", "left", "right"]}><View style={styles.container}>
@@ -20,7 +59,7 @@ export default function AccountScreen() {
       <View style={styles.profile}><View style={styles.avatar}><Ionicons name="person" size={31} color="#0B5D45" /></View><Text style={styles.name}>{user?.name || "حساب أبو مشعل"}</Text><Text style={styles.email}>{user?.email || "تم تسجيل الدخول بنجاح"}</Text><View style={styles.roleBadge}><Text style={styles.roleText}>{({ customer: "عميل", employee: "موظف", supervisor: "مشرف", admin: "مدير", super_admin: "مدير عام" } as Record<string, string>)[role] ?? "عميل"}</Text></View></View>
       <View style={styles.card}><Ionicons name="cloud-done-outline" size={22} color="#0B5D45" /><View style={styles.cardCopy}><Text style={styles.cardTitle}>المزامنة السحابية</Text><Text style={styles.cardBody}>سترتبط طلباتك ومعاملاتك وبيانات العمل بحسابك، مع تطبيق عزل البيانات في الخادم.</Text></View></View>
       <Pressable onPress={() => void signOut()} style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}><Ionicons name="log-out-outline" size={19} color="#B42318" /><Text style={styles.signOutText}>تسجيل الخروج</Text></Pressable>
-    </> : <View style={styles.center}><View style={styles.avatar}><Ionicons name="shield-checkmark-outline" size={34} color="#0B5D45" /></View><Text style={styles.welcome}>احفظ بياناتك على حسابك</Text><Text style={styles.description}>سجّل الدخول لمزامنة طلباتك وبيانات العمل بين أجهزتك. يتم استخدام الدور الحقيقي للحساب بدلاً من وضع المعاينة المحلي.</Text><Pressable onPress={() => void signIn()} style={({ pressed }) => [styles.signIn, pressed && styles.pressed]}><Ionicons name="log-in-outline" size={20} color="#FFFFFF" /><Text style={styles.signInText}>تسجيل الدخول</Text></Pressable></View>}
+    </> : <View style={styles.center}><View style={styles.avatar}><Ionicons name="shield-checkmark-outline" size={34} color="#0B5D45" /></View><Text style={styles.welcome}>احفظ بياناتك على حسابك</Text><Text style={styles.description}>{loginAttempt ? "أكمل اختيار الحساب في المتصفح، ثم ارجع إلى Expo Go. سيكتمل الدخول تلقائياً." : "سجّل الدخول لمزامنة طلباتك وبيانات العمل بين أجهزتك. يتم استخدام الدور الحقيقي للحساب بدلاً من وضع المعاينة المحلي."}</Text>{loginError ? <Text style={styles.loginError}>{loginError}</Text> : null}<Pressable disabled={Boolean(loginAttempt)} onPress={() => void signIn()} style={({ pressed }) => [styles.signIn, (pressed || loginAttempt) && styles.pressed]}>{loginAttempt ? <ActivityIndicator color="#FFFFFF" /> : <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />}<Text style={styles.signInText}>{loginAttempt ? "بانتظار إكمال الدخول" : "تسجيل الدخول"}</Text></Pressable></View>}
   </View></ScreenContainer>;
 }
-const styles = StyleSheet.create({ container: { flex: 1, padding: 20 }, nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12 }, closeButton: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, navCopy: { alignItems: "flex-end", flex: 1 }, brand: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", writingDirection: "rtl" }, center: { alignItems: "center", flex: 1, justifyContent: "center", paddingHorizontal: 20 }, avatar: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 28, height: 62, justifyContent: "center", width: 62 }, welcome: { color: "#17382F", fontSize: 21, fontWeight: "800", marginTop: 16, writingDirection: "rtl" }, description: { color: "#66756E", fontSize: 13, lineHeight: 21, marginTop: 8, textAlign: "center", writingDirection: "rtl" }, signIn: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 15, flexDirection: "row-reverse", gap: 8, justifyContent: "center", marginTop: 22, minHeight: 52, paddingHorizontal: 22 }, signInText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" }, profile: { alignItems: "center", marginTop: 48 }, name: { color: "#17382F", fontSize: 20, fontWeight: "800", marginTop: 13, writingDirection: "rtl" }, email: { color: "#66756E", fontSize: 13, marginTop: 5, writingDirection: "rtl" }, roleBadge: { backgroundColor: "#E9F5EC", borderRadius: 999, marginTop: 10, paddingHorizontal: 11, paddingVertical: 6 }, roleText: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, card: { alignItems: "flex-start", backgroundColor: "#F2F8F3", borderColor: "#D7E9DB", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", gap: 12, marginTop: 32, padding: 15 }, cardCopy: { alignItems: "flex-end", flex: 1 }, cardTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, cardBody: { color: "#53695E", fontSize: 12, lineHeight: 19, marginTop: 4, textAlign: "right", writingDirection: "rtl" }, signOut: { alignItems: "center", alignSelf: "center", flexDirection: "row-reverse", gap: 7, marginTop: 22, padding: 10 }, signOutText: { color: "#B42318", fontSize: 13, fontWeight: "800", writingDirection: "rtl" }, pressed: { opacity: 0.72 }, });
+const styles = StyleSheet.create({ container: { flex: 1, padding: 20 }, nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12 }, closeButton: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, navCopy: { alignItems: "flex-end", flex: 1 }, brand: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", writingDirection: "rtl" }, center: { alignItems: "center", flex: 1, justifyContent: "center", paddingHorizontal: 20 }, avatar: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 28, height: 62, justifyContent: "center", width: 62 }, welcome: { color: "#17382F", fontSize: 21, fontWeight: "800", marginTop: 16, writingDirection: "rtl" }, description: { color: "#66756E", fontSize: 13, lineHeight: 21, marginTop: 8, textAlign: "center", writingDirection: "rtl" }, loginError: { color: "#B42318", fontSize: 12, lineHeight: 19, marginTop: 10, textAlign: "center", writingDirection: "rtl" }, signIn: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 15, flexDirection: "row-reverse", gap: 8, justifyContent: "center", marginTop: 22, minHeight: 52, paddingHorizontal: 22 }, signInText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" }, profile: { alignItems: "center", marginTop: 48 }, name: { color: "#17382F", fontSize: 20, fontWeight: "800", marginTop: 13, writingDirection: "rtl" }, email: { color: "#66756E", fontSize: 13, marginTop: 5, writingDirection: "rtl" }, roleBadge: { backgroundColor: "#E9F5EC", borderRadius: 999, marginTop: 10, paddingHorizontal: 11, paddingVertical: 6 }, roleText: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, card: { alignItems: "flex-start", backgroundColor: "#F2F8F3", borderColor: "#D7E9DB", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", gap: 12, marginTop: 32, padding: 15 }, cardCopy: { alignItems: "flex-end", flex: 1 }, cardTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, cardBody: { color: "#53695E", fontSize: 12, lineHeight: 19, marginTop: 4, textAlign: "right", writingDirection: "rtl" }, signOut: { alignItems: "center", alignSelf: "center", flexDirection: "row-reverse", gap: 7, marginTop: 22, padding: 10 }, signOutText: { color: "#B42318", fontSize: 13, fontWeight: "800", writingDirection: "rtl" }, pressed: { opacity: 0.72 }, });

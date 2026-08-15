@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, lt, notInArray, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, notInArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -24,6 +24,73 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function createExpoGoOAuthAttempt(input: {
+  id: string;
+  proofHash: string;
+  callbackState: string;
+  expiresAt: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(expoGoOAuthAttempts).where(lt(expoGoOAuthAttempts.expiresAt, new Date()));
+  await db.insert(expoGoOAuthAttempts).values({ ...input, status: "pending" });
+}
+
+export async function markExpoGoOAuthAttemptReady(input: {
+  id: string;
+  callbackState: string;
+  authorizationCode: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.update(expoGoOAuthAttempts)
+    .set({ authorizationCode: input.authorizationCode, status: "ready" })
+    .where(and(
+      eq(expoGoOAuthAttempts.id, input.id),
+      eq(expoGoOAuthAttempts.callbackState, input.callbackState),
+      eq(expoGoOAuthAttempts.status, "pending"),
+      gt(expoGoOAuthAttempts.expiresAt, new Date()),
+    ));
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+}
+
+export async function claimExpoGoOAuthAttempt(input: { id: string; proofHash: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select({
+    authorizationCode: expoGoOAuthAttempts.authorizationCode,
+    callbackState: expoGoOAuthAttempts.callbackState,
+  }).from(expoGoOAuthAttempts).where(and(
+    eq(expoGoOAuthAttempts.id, input.id),
+    eq(expoGoOAuthAttempts.proofHash, input.proofHash),
+    eq(expoGoOAuthAttempts.status, "ready"),
+    gt(expoGoOAuthAttempts.expiresAt, new Date()),
+  )).limit(1);
+  const attempt = rows[0];
+  if (!attempt?.authorizationCode) return undefined;
+  const result = await db.update(expoGoOAuthAttempts)
+    .set({ status: "exchanging" })
+    .where(and(
+      eq(expoGoOAuthAttempts.id, input.id),
+      eq(expoGoOAuthAttempts.proofHash, input.proofHash),
+      eq(expoGoOAuthAttempts.status, "ready"),
+    ));
+  if (Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) !== 1) return undefined;
+  return attempt;
+}
+
+export async function removeExpoGoOAuthAttempt(id: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(expoGoOAuthAttempts).where(eq(expoGoOAuthAttempts.id, id));
+}
+
+export async function failExpoGoOAuthAttempt(id: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(expoGoOAuthAttempts).set({ status: "failed", authorizationCode: null }).where(eq(expoGoOAuthAttempts.id, id));
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

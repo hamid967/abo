@@ -71,6 +71,13 @@
       "when": 1786806217826,
       "tag": "0009_lucky_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1786810672134,
+      "tag": "0010_far_mystique",
+      "breakpoints": true
     }
   ]
 }
