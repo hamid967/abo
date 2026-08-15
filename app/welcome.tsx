@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppText as Text } from "@/components/ui/app-text";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";

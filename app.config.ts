@@ -87,6 +87,17 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-font",
+      {
+        fonts: [
+          "./assets/fonts/Cairo-Regular.ttf",
+          "./assets/fonts/Cairo-SemiBold.ttf",
+          "./assets/fonts/Cairo-Bold.ttf",
+          "./assets/fonts/Cairo-ExtraBold.ttf",
+        ],
+      },
+    ],
+    [
       "expo-notifications",
       {
         "defaultChannel": "government-deadlines",

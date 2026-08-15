@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text } from "@/components/ui/app-text";
 import { StatusPill } from "@/components/status-pill";
 import { isTerminalStatus, isTransactionOverdue, statusDetails, TransactionStatus } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";

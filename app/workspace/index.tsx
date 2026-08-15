@@ -3,9 +3,10 @@ import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { useWorkspace, WorkspaceTask } from "@/lib/workspace-provider";
 import { useAccount } from "@/hooks/use-account";
 import { trpc } from "@/lib/trpc";

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { AppText as Text } from "@/components/ui/app-text";
 
 import { statusDetails, TransactionStatus } from "@/lib/transactions";
 

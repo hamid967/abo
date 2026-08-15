@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScrollView, Pressable, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text } from "@/components/ui/app-text";
 import { isTransactionOverdue } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
 import { useWorkspace } from "@/lib/workspace-provider";

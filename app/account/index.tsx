@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text } from "@/components/ui/app-text";
 import { useAccount } from "@/hooks/use-account";
 import { startOAuthLogin } from "@/constants/oauth";
 

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { AppText as Text } from "@/components/ui/app-text";
 
 import { StatusPill } from "@/components/status-pill";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";

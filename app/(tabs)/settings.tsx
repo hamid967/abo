@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text } from "@/components/ui/app-text";
 import { AppRole, useAppRole } from "@/lib/role-provider";
 import { useAccount } from "@/hooks/use-account";
 import { getReminderPermissionStatus, ReminderPermissionState, requestReminderPermission } from "@/lib/notification-service";

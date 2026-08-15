@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 
 import { EmptyState } from "@/components/empty-state";
+import { AppText as Text } from "@/components/ui/app-text";
 import { TransactionCard } from "@/components/transaction-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { useTransactions } from "@/lib/transactions-provider";

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { AppText as Text } from "@/components/ui/app-text";
 
 type FeedbackKind = "empty" | "loading" | "error" | "offline" | "success";
 

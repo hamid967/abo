@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 
 import { EmptyState } from "@/components/empty-state";
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusPill } from "@/components/status-pill";
 import { TransactionCard } from "@/components/transaction-card";
+import { AppText as Text } from "@/components/ui/app-text";
 import { FeedbackState } from "@/components/ui/feedback-state";
 import { isTransactionOverdue, statusDetails, TransactionStatus, transactionStatuses } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";

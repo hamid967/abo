@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { BeneficiaryType, TransactionPriority } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
 import { useAccount } from "@/hooks/use-account";

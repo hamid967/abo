@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { useAccount } from "@/hooks/use-account";
 import { useLocale } from "@/lib/locale-provider";
 import { trpc } from "@/lib/trpc";

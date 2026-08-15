@@ -1,5 +1,6 @@
 import { PropsWithChildren, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
+import { AppText as Text } from "@/components/ui/app-text";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";

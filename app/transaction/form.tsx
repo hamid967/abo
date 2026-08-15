@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { statusDetails, TransactionStatus, transactionStatuses } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
 import { canScheduleReminder, isValidReminderTime, reminderOffsetLabels, ReminderOffsetDays, reminderOffsets } from "@/lib/reminders";
