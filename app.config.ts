@@ -105,6 +105,12 @@ const config: ExpoConfig = {
       }
     ],
     [
+      "expo-local-authentication",
+      {
+        faceIDPermission: "يسمح $(PRODUCT_NAME) باستخدام Face ID لتسهيل الدخول الآمن إلى حسابك."
+      }
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",

@@ -4,7 +4,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type PropsWithChildren, useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import "@/lib/notification-service";
@@ -16,7 +16,8 @@ import { WorkspaceProvider } from "@/lib/workspace-provider";
 import { RoleProvider } from "@/lib/role-provider";
 import { InquiryProvider } from "@/lib/inquiries-provider";
 import { LocaleProvider } from "@/lib/locale-provider";
-import { AccountProvider } from "@/hooks/use-account";
+import { AccountProvider, useAccount } from "@/hooks/use-account";
+import { BiometricUnlockScreen } from "@/components/biometric-unlock-screen";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -36,6 +37,14 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+function BiometricGate({ children }: PropsWithChildren) {
+  const { biometricLocked, biometricAvailability, unlockWithBiometrics, logout } = useAccount();
+  if (biometricLocked) {
+    return <BiometricUnlockScreen availability={biometricAvailability} onUnlock={unlockWithBiometrics} onFallback={logout} />;
+  }
+  return children;
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontLoadError] = useFonts({
@@ -110,6 +119,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <LocaleProvider>
           <AccountProvider>
+            <BiometricGate>
             <RoleProvider>
               <TransactionProvider>
                 <WorkspaceProvider>
@@ -135,6 +145,7 @@ export default function RootLayout() {
                 </WorkspaceProvider>
               </TransactionProvider>
             </RoleProvider>
+            </BiometricGate>
           </AccountProvider>
           </LocaleProvider>
           <StatusBar style="auto" />
