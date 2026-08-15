@@ -12,6 +12,14 @@ export function canViewSystemDashboard(role: string | null | undefined) {
   return role === "admin" || role === "super_admin";
 }
 
+export function canManageKnowledge(role: string | null | undefined) {
+  return role === "supervisor" || role === "admin" || role === "super_admin";
+}
+
+export function canViewAuditLogs(role: string | null | undefined) {
+  return role === "admin" || role === "super_admin";
+}
+
 export function canAccessCustomerRecord(role: string | null | undefined, recordOwnerId: number, currentUserId: number) {
   return recordOwnerId === currentUserId || canOperateTransactions(role);
 }

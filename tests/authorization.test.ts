@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canAccessCustomerRecord, canManageOperations, canOperateTransactions, canViewSystemDashboard } from "../server/authorization";
+import { canAccessCustomerRecord, canManageKnowledge, canManageOperations, canOperateTransactions, canViewAuditLogs, canViewSystemDashboard } from "../server/authorization";
 
 describe("Abu Mishal authorization", () => {
   it("limits a customer to their own record", () => {
@@ -21,5 +21,14 @@ describe("Abu Mishal authorization", () => {
     expect(canViewSystemDashboard("supervisor")).toBe(false);
     expect(canViewSystemDashboard("employee")).toBe(false);
     expect(canViewSystemDashboard("user")).toBe(false);
+  });
+
+  it("restricts knowledge publication to supervisory roles and audit logs to admins", () => {
+    expect(canManageKnowledge("supervisor")).toBe(true);
+    expect(canManageKnowledge("employee")).toBe(false);
+    expect(canManageKnowledge("user")).toBe(false);
+    expect(canViewAuditLogs("admin")).toBe(true);
+    expect(canViewAuditLogs("super_admin")).toBe(true);
+    expect(canViewAuditLogs("supervisor")).toBe(false);
   });
 });

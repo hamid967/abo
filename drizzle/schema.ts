@@ -171,6 +171,67 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("notifications_recipient_idx").on(table.recipientUserId, table.readAt), foreignKey({ columns: [table.recipientUserId], foreignColumns: [users.id], name: "notifications_recipient_fk" }).onDelete("cascade")]);
 
+export const supportTickets = mysqlTable("support_tickets", {
+  id: int("id").autoincrement().primaryKey(),
+  customerUserId: int("customerUserId").notNull(),
+  transactionId: int("transactionId"),
+  assignedUserId: int("assignedUserId"),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["open", "in_progress", "awaiting_customer", "resolved", "closed"]).default("open").notNull(),
+  priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
+  closedAt: timestamp("closedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("support_tickets_customer_idx").on(table.customerUserId, table.updatedAt), index("support_tickets_assignee_idx").on(table.assignedUserId, table.status), index("support_tickets_transaction_idx").on(table.transactionId), foreignKey({ columns: [table.customerUserId], foreignColumns: [users.id], name: "support_tickets_customer_fk" }).onDelete("restrict"), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "support_tickets_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.assignedUserId], foreignColumns: [users.id], name: "support_tickets_assignee_fk" }).onDelete("set null")]);
+
+export const ticketMessages = mysqlTable("ticket_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  ticketId: int("ticketId").notNull(),
+  authorUserId: int("authorUserId").notNull(),
+  body: text("body").notNull(),
+  isInternal: boolean("isInternal").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("ticket_messages_ticket_idx").on(table.ticketId, table.createdAt), foreignKey({ columns: [table.ticketId], foreignColumns: [supportTickets.id], name: "ticket_messages_ticket_fk" }).onDelete("cascade"), foreignKey({ columns: [table.authorUserId], foreignColumns: [users.id], name: "ticket_messages_author_fk" }).onDelete("restrict")]);
+
+export const knowledgeArticles = mysqlTable("knowledge_articles", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  excerpt: text("excerpt"),
+  content: text("content").notNull(),
+  category: varchar("category", { length: 120 }),
+  language: mysqlEnum("language", ["ar", "en"]).default("ar").notNull(),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  sourceLabel: varchar("sourceLabel", { length: 255 }),
+  sourceUrl: varchar("sourceUrl", { length: 1024 }),
+  publishedAt: timestamp("publishedAt"),
+  createdByUserId: int("createdByUserId").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("knowledge_articles_status_language_idx").on(table.status, table.language, table.updatedAt), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "knowledge_articles_creator_fk" }).onDelete("restrict")]);
+
+export const faqItems = mysqlTable("faq_items", {
+  id: int("id").autoincrement().primaryKey(),
+  question: varchar("question", { length: 500 }).notNull(),
+  answer: text("answer").notNull(),
+  category: varchar("category", { length: 120 }),
+  language: mysqlEnum("language", ["ar", "en"]).default("ar").notNull(),
+  isPublished: boolean("isPublished").default(false).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("faq_items_public_idx").on(table.isPublished, table.language, table.sortOrder), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "faq_items_creator_fk" }).onDelete("restrict")]);
+
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  actorUserId: int("actorUserId"),
+  action: varchar("action", { length: 120 }).notNull(),
+  resourceType: varchar("resourceType", { length: 120 }).notNull(),
+  resourceId: varchar("resourceId", { length: 120 }),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("audit_logs_actor_idx").on(table.actorUserId, table.createdAt), index("audit_logs_resource_idx").on(table.resourceType, table.resourceId, table.createdAt), foreignKey({ columns: [table.actorUserId], foreignColumns: [users.id], name: "audit_logs_actor_fk" }).onDelete("set null")]);
+
 export const cloudRecords = mysqlTable("cloud_records", {
   id: int("id").autoincrement().primaryKey(),
   ownerUserId: int("ownerUserId").notNull(),

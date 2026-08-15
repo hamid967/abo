@@ -36,6 +36,13 @@
       "when": 1786759869175,
       "tag": "0004_bouncy_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1786761492584,
+      "tag": "0005_shiny_galactus",
+      "breakpoints": true
     }
   ]
 }

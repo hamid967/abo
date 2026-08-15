@@ -1,0 +1,23 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { ScreenContainer } from "@/components/screen-container";
+import { useAccount } from "@/hooks/use-account";
+import { useLocale } from "@/lib/locale-provider";
+import { trpc } from "@/lib/trpc";
+
+export default function NotificationsScreen() {
+  const router = useRouter();
+  const { isAuthenticated } = useAccount();
+  const { isArabic, direction } = useLocale();
+  const list = trpc.notifications.list.useQuery(undefined, { enabled: isAuthenticated });
+  const markRead = trpc.notifications.markRead.useMutation({ onSuccess: () => void list.refetch() });
+  const text = isArabic ? { title: "الإشعارات", subtitle: "متابعة تحديثات حسابك وطلباتك", empty: "لا توجد إشعارات حالياً.", signIn: "سجّل الدخول لرؤية الإشعارات", read: "تمت القراءة" } : { title: "Notifications", subtitle: "Updates about your account and requests", empty: "You have no notifications yet.", signIn: "Sign in to view notifications", read: "Read" };
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]}><View style={styles.container}>
+    <View style={[styles.header, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Pressable onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color="#17382F" /></Pressable><View style={styles.headerCopy}><Text style={[styles.title, { writingDirection: direction }]}>{text.title}</Text><Text style={[styles.subtitle, { writingDirection: direction }]}>{text.subtitle}</Text></View></View>
+    {!isAuthenticated ? <Pressable onPress={() => router.push("/account" as never)} style={styles.empty}><Ionicons name="lock-closed-outline" size={30} color="#0B5D45" /><Text style={[styles.emptyText, { writingDirection: direction }]}>{text.signIn}</Text></Pressable> : list.isLoading ? <ActivityIndicator color="#0B5D45" style={styles.loading} /> : <FlatList data={list.data ?? []} keyExtractor={(item) => String(item.id)} contentContainerStyle={styles.list} ListEmptyComponent={<View style={styles.empty}><Ionicons name="notifications-off-outline" size={32} color="#78A190" /><Text style={[styles.emptyText, { writingDirection: direction }]}>{text.empty}</Text></View>} renderItem={({ item }) => <Pressable onPress={() => { if (!item.readAt) void markRead.mutateAsync({ notificationId: item.id }); }} style={({ pressed }) => [styles.card, !item.readAt && styles.unread, pressed && styles.pressed]}><View style={[styles.cardRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={styles.icon}><Ionicons name={item.readAt ? "notifications-outline" : "notifications"} size={18} color="#0B5D45" /></View><View style={styles.copy}><Text style={[styles.cardTitle, { writingDirection: direction }]}>{item.title}</Text><Text style={[styles.body, { writingDirection: direction }]}>{item.body}</Text><Text style={[styles.time, { writingDirection: direction }]}>{new Date(item.createdAt).toLocaleDateString(isArabic ? "ar-SA" : "en-US")} {item.readAt ? `· ${text.read}` : ""}</Text></View></View></Pressable>} />}
+  </View></ScreenContainer>;
+}
+
+const styles = StyleSheet.create({ container: { flex: 1, padding: 20 }, header: { alignItems: "center", gap: 12 }, close: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, headerCopy: { alignItems: "flex-end", flex: 1 }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", textAlign: "right" }, subtitle: { color: "#66756E", fontSize: 12, marginTop: 4, textAlign: "right" }, loading: { marginTop: 40 }, list: { gap: 10, paddingTop: 22, paddingBottom: 30 }, card: { backgroundColor: "#FFFFFF", borderColor: "#E1E9E3", borderRadius: 16, borderWidth: 1, padding: 14 }, unread: { borderColor: "#76A98B", borderWidth: 1.5 }, cardRow: { alignItems: "flex-start", gap: 10 }, icon: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 12, height: 38, justifyContent: "center", width: 38 }, copy: { flex: 1 }, cardTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", textAlign: "right" }, body: { color: "#5A6D63", fontSize: 12, lineHeight: 19, marginTop: 4, textAlign: "right" }, time: { color: "#8B9B93", fontSize: 11, marginTop: 8, textAlign: "right" }, empty: { alignItems: "center", backgroundColor: "#F7FAF8", borderColor: "#E1E9E3", borderRadius: 18, borderStyle: "dashed", borderWidth: 1, marginTop: 30, padding: 28 }, emptyText: { color: "#66756E", fontSize: 13, lineHeight: 20, marginTop: 8, textAlign: "center" }, pressed: { opacity: 0.7 } });

@@ -13,6 +13,7 @@ import { TransactionProvider } from "@/lib/transactions-provider";
 import { WorkspaceProvider } from "@/lib/workspace-provider";
 import { RoleProvider } from "@/lib/role-provider";
 import { InquiryProvider } from "@/lib/inquiries-provider";
+import { LocaleProvider } from "@/lib/locale-provider";
 import { AccountProvider } from "@/hooks/use-account";
 import {
   SafeAreaFrameContext,
@@ -91,6 +92,7 @@ export default function RootLayout() {
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
+          <LocaleProvider>
           <AccountProvider>
             <RoleProvider>
               <TransactionProvider>
@@ -103,6 +105,9 @@ export default function RootLayout() {
                 <Stack.Screen name="workspace/index" />
                 <Stack.Screen name="operations/index" />
                 <Stack.Screen name="inquiries/index" />
+                <Stack.Screen name="notifications/index" />
+                <Stack.Screen name="knowledge/index" />
+                <Stack.Screen name="search/index" />
                 <Stack.Screen name="reports/index" />
                 <Stack.Screen name="account/index" />
                 <Stack.Screen name="oauth/callback" />
@@ -112,6 +117,7 @@ export default function RootLayout() {
               </TransactionProvider>
             </RoleProvider>
           </AccountProvider>
+          </LocaleProvider>
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>

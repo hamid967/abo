@@ -1,6 +1,6 @@
-import { and, count, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { cloudRecords, documents, InsertUser, InsertServiceRequest, InsertTransactionRecord, organizations, serviceRequests, transactions, users } from "../drizzle/schema";
+import { auditLogs, cloudRecords, documents, faqItems, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notifications, organizations, serviceRequests, supportTickets, ticketMessages, transactions, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 
@@ -134,6 +134,132 @@ export async function updateTransactionStatus(id: number, status: InsertTransact
 
 export function assertCanManage(role: string) {
   if (!canManageOperations(role)) throw new Error("FORBIDDEN_OPERATION");
+}
+
+export async function createAuditLog(input: { actorUserId?: number | null; action: string; resourceType: string; resourceId?: string | number | null; metadata?: unknown }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(auditLogs).values({ actorUserId: input.actorUserId ?? null, action: input.action, resourceType: input.resourceType, resourceId: input.resourceId === undefined || input.resourceId === null ? null : String(input.resourceId), metadata: input.metadata });
+}
+
+export async function createSupportTicket(input: { customerUserId: number; transactionId?: number; subject: string; priority: "low" | "normal" | "high" | "urgent"; initialMessage: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(supportTickets).values({ customerUserId: input.customerUserId, transactionId: input.transactionId, subject: input.subject, priority: input.priority });
+  const ticketId = result[0].insertId;
+  await db.insert(ticketMessages).values({ ticketId, authorUserId: input.customerUserId, body: input.initialMessage, isInternal: false });
+  return { id: ticketId };
+}
+
+export async function listSupportTickets(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select({ id: supportTickets.id, subject: supportTickets.subject, status: supportTickets.status, priority: supportTickets.priority, transactionId: supportTickets.transactionId, customerUserId: supportTickets.customerUserId, assignedUserId: supportTickets.assignedUserId, updatedAt: supportTickets.updatedAt, createdAt: supportTickets.createdAt, customerName: users.name }).from(supportTickets).leftJoin(users, eq(supportTickets.customerUserId, users.id));
+  return canOperateTransactions(role) ? query.orderBy(desc(supportTickets.updatedAt)).limit(100) : query.where(eq(supportTickets.customerUserId, userId)).orderBy(desc(supportTickets.updatedAt)).limit(100);
+}
+
+export async function getSupportTicketById(ticketId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  return rows[0];
+}
+
+export async function listTicketMessages(ticketId: number, includeInternal: boolean) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select({ id: ticketMessages.id, ticketId: ticketMessages.ticketId, authorUserId: ticketMessages.authorUserId, authorName: users.name, body: ticketMessages.body, isInternal: ticketMessages.isInternal, createdAt: ticketMessages.createdAt }).from(ticketMessages).leftJoin(users, eq(ticketMessages.authorUserId, users.id));
+  return includeInternal ? query.where(eq(ticketMessages.ticketId, ticketId)).orderBy(asc(ticketMessages.createdAt)) : query.where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.isInternal, false))).orderBy(asc(ticketMessages.createdAt));
+}
+
+export async function addTicketMessage(input: { ticketId: number; authorUserId: number; body: string; isInternal: boolean; nextStatus: "in_progress" | "awaiting_customer" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { nextStatus, ...message } = input;
+  const result = await db.insert(ticketMessages).values(message);
+  await db.update(supportTickets).set({ updatedAt: new Date(), status: nextStatus }).where(eq(supportTickets.id, input.ticketId));
+  return { id: result[0].insertId };
+}
+
+export async function updateSupportTicket(ticketId: number, input: { status?: "open" | "in_progress" | "awaiting_customer" | "resolved" | "closed"; priority?: "low" | "normal" | "high" | "urgent"; assignedUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const closedAt = input.status === "resolved" || input.status === "closed" ? new Date() : undefined;
+  await db.update(supportTickets).set({ ...input, ...(closedAt ? { closedAt } : {}) }).where(eq(supportTickets.id, ticketId));
+  return { success: true } as const;
+}
+
+export async function listNotifications(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(notifications).where(eq(notifications.recipientUserId, userId)).orderBy(desc(notifications.createdAt)).limit(80);
+}
+
+export async function markNotificationRead(notificationId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(notifications).set({ readAt: new Date() }).where(and(eq(notifications.id, notificationId), eq(notifications.recipientUserId, userId)));
+  return { success: true } as const;
+}
+
+export async function createInAppNotification(input: { recipientUserId: number; title: string; body: string; type: string; data?: unknown }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(notifications).values(input);
+}
+
+export async function listPublishedKnowledge(language: "ar" | "en") {
+  const db = await getDb();
+  if (!db) return { articles: [], faqs: [] };
+  const [articles, faqs] = await Promise.all([
+    db.select().from(knowledgeArticles).where(and(eq(knowledgeArticles.status, "published"), eq(knowledgeArticles.language, language))).orderBy(desc(knowledgeArticles.updatedAt)).limit(50),
+    db.select().from(faqItems).where(and(eq(faqItems.isPublished, true), eq(faqItems.language, language))).orderBy(asc(faqItems.sortOrder)).limit(50),
+  ]);
+  return { articles, faqs };
+}
+
+export async function getKnowledgeContext(language: "ar" | "en" = "ar") {
+  const { articles, faqs } = await listPublishedKnowledge(language);
+  const sources = [
+    ...articles.map((article) => ({ title: article.title, sourceLabel: article.sourceLabel ?? "مركز معرفة أبو مشعل", sourceUrl: article.sourceUrl ?? null, updatedAt: article.updatedAt })),
+    ...faqs.map((faq) => ({ title: faq.question, sourceLabel: "الأسئلة الشائعة في أبو مشعل", sourceUrl: null, updatedAt: faq.updatedAt })),
+  ];
+  const referenceText = [
+    ...articles.map((article) => `مقال: ${article.title}\nالخلاصة: ${article.excerpt ?? ""}\nالمحتوى: ${article.content.slice(0, 1600)}\nالمصدر: ${article.sourceLabel ?? "مركز معرفة أبو مشعل"}`),
+    ...faqs.map((faq) => `سؤال شائع: ${faq.question}\nالإجابة: ${faq.answer.slice(0, 1000)}`),
+  ].join("\n\n---\n\n");
+  return { referenceText: referenceText.slice(0, 12000), sources };
+}
+
+export async function createKnowledgeArticle(input: { title: string; excerpt?: string; content: string; category?: string; language: "ar" | "en"; sourceLabel?: string; sourceUrl?: string; createdByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(knowledgeArticles).values({ ...input, status: "published", publishedAt: new Date() });
+  return { id: result[0].insertId };
+}
+
+export async function createFaqItem(input: { question: string; answer: string; category?: string; language: "ar" | "en"; sortOrder?: number; createdByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(faqItems).values({ ...input, isPublished: true });
+  return { id: result[0].insertId };
+}
+
+export async function listAuditLogs(limit: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: auditLogs.id, action: auditLogs.action, resourceType: auditLogs.resourceType, resourceId: auditLogs.resourceId, metadata: auditLogs.metadata, createdAt: auditLogs.createdAt, actorUserId: auditLogs.actorUserId, actorName: users.name }).from(auditLogs).leftJoin(users, eq(auditLogs.actorUserId, users.id)).orderBy(desc(auditLogs.createdAt)).limit(limit);
+}
+
+export async function searchAccessibleRecords(userId: number, role: string, term: string) {
+  const db = await getDb();
+  if (!db) return { requests: [], transactions: [] };
+  const pattern = `%${term}%`;
+  const requestPredicate = or(like(serviceRequests.requestNumber, pattern), like(serviceRequests.title, pattern), like(serviceRequests.customerPhone, pattern));
+  const transactionPredicate = or(like(transactions.referenceNumber, pattern), like(transactions.nextAction, pattern));
+  const requestsResult = canOperateTransactions(role) ? await db.select({ id: serviceRequests.id, number: serviceRequests.requestNumber, title: serviceRequests.title, status: serviceRequests.status }).from(serviceRequests).where(requestPredicate).limit(10) : await db.select({ id: serviceRequests.id, number: serviceRequests.requestNumber, title: serviceRequests.title, status: serviceRequests.status }).from(serviceRequests).where(and(eq(serviceRequests.customerUserId, userId), requestPredicate)).limit(10);
+  const transactionsResult = canOperateTransactions(role) ? await db.select({ id: transactions.id, number: transactions.referenceNumber, status: transactions.status, nextAction: transactions.nextAction }).from(transactions).where(transactionPredicate).limit(10) : await db.select({ id: transactions.id, number: transactions.referenceNumber, status: transactions.status, nextAction: transactions.nextAction }).from(transactions).where(and(eq(transactions.customerUserId, userId), transactionPredicate)).limit(10);
+  return { requests: requestsResult, transactions: transactionsResult };
 }
 
 export async function getCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries") {
