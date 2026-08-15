@@ -52,7 +52,7 @@ export async function cancelTransactionReminder(reminder?: ReminderSettings) {
 
 export async function scheduleTransactionReminder(transaction: GovernmentTransaction): Promise<ReminderSettings | undefined> {
   const reminder = transaction.reminder;
-  if (!reminder?.enabled || transaction.status === "completed" || !canScheduleReminder(transaction.dueDate, reminder.daysBefore)) {
+  if (!reminder?.enabled || transaction.status === "completed" || !canScheduleReminder(transaction.dueDate, reminder.daysBefore, reminder.hour, reminder.minute)) {
     return reminder ? { ...reminder, notificationId: undefined } : undefined;
   }
   if (Platform.OS === "web") return { ...reminder, notificationId: undefined };
@@ -60,7 +60,7 @@ export async function scheduleTransactionReminder(transaction: GovernmentTransac
   const permissionGranted = await getReminderPermissionStatus();
   if (permissionGranted !== "granted") return { ...reminder, notificationId: undefined };
 
-  const triggerDate = getReminderTriggerDate(transaction.dueDate!, reminder.daysBefore);
+  const triggerDate = getReminderTriggerDate(transaction.dueDate!, reminder.daysBefore, reminder.hour, reminder.minute);
   if (!triggerDate) return { ...reminder, notificationId: undefined };
 
   await configureAndroidChannel();

@@ -6,7 +6,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { ScreenContainer } from "@/components/screen-container";
 import { statusDetails, TransactionStatus, transactionStatuses } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
-import { canScheduleReminder, reminderOffsetLabels, ReminderOffsetDays, reminderOffsets } from "@/lib/reminders";
+import { canScheduleReminder, isValidReminderTime, reminderOffsetLabels, ReminderOffsetDays, reminderOffsets } from "@/lib/reminders";
 import { requestReminderPermission } from "@/lib/notification-service";
 
 const editableStatuses = transactionStatuses.filter((status) => status !== "overdue");
@@ -24,6 +24,8 @@ export default function TransactionFormScreen() {
   const [status, setStatus] = useState<TransactionStatus>("new");
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderDaysBefore, setReminderDaysBefore] = useState<ReminderOffsetDays>(3);
+  const [reminderHour, setReminderHour] = useState("09");
+  const [reminderMinute, setReminderMinute] = useState("00");
 
   useEffect(() => {
     if (!existing) return;
@@ -35,6 +37,8 @@ export default function TransactionFormScreen() {
     setStatus(existing.status === "overdue" ? "action_required" : existing.status);
     setReminderEnabled(existing.reminder?.enabled ?? false);
     setReminderDaysBefore(existing.reminder?.daysBefore ?? 3);
+    setReminderHour(String(existing.reminder?.hour ?? 9).padStart(2, "0"));
+    setReminderMinute(String(existing.reminder?.minute ?? 0).padStart(2, "0"));
   }, [existing]);
 
   async function handleSave() {
@@ -50,7 +54,13 @@ export default function TransactionFormScreen() {
       Alert.alert("أضف موعداً أولاً", "يحتاج التذكير إلى تاريخ موعد متوقع للمعاملة.");
       return;
     }
-    if (reminderEnabled && !canScheduleReminder(dueDate, reminderDaysBefore)) {
+    const hour = Number(reminderHour);
+    const minute = Number(reminderMinute);
+    if (reminderEnabled && !isValidReminderTime(hour, minute)) {
+      Alert.alert("وقت التذكير غير صحيح", "أدخل ساعة من 00 إلى 23 ودقيقة من 00 إلى 59.");
+      return;
+    }
+    if (reminderEnabled && !canScheduleReminder(dueDate, reminderDaysBefore, hour, minute)) {
       Alert.alert("اختر موعداً مستقبلياً", "غيّر تاريخ المتابعة أو وقت التذكير ليكون بعد الوقت الحالي.");
       return;
     }
@@ -62,7 +72,7 @@ export default function TransactionFormScreen() {
       }
     }
 
-    const draft = { title: title.trim(), agency: agency.trim(), reference: reference.trim(), dueDate: dueDate || undefined, notes: notes.trim() || undefined, status, reminder: { enabled: reminderEnabled, daysBefore: reminderDaysBefore } };
+    const draft = { title: title.trim(), agency: agency.trim(), reference: reference.trim(), dueDate: dueDate || undefined, notes: notes.trim() || undefined, status, reminder: { enabled: reminderEnabled, daysBefore: reminderDaysBefore, hour, minute } };
     if (existing) await updateTransaction(existing.id, draft);
     else await addTransaction(draft);
     router.back();
@@ -91,9 +101,20 @@ export default function TransactionFormScreen() {
               <Ionicons name={reminderEnabled ? "notifications" : "notifications-outline"} size={21} color={reminderEnabled ? "#0B5CAD" : "#667085"} />
             </Pressable>
             {reminderEnabled && (
-              <View style={styles.reminderOptions}>
-                {reminderOffsets.map((offset) => <Pressable key={offset} onPress={() => setReminderDaysBefore(offset)} style={({ pressed }) => [styles.reminderOption, reminderDaysBefore === offset && styles.reminderOptionActive, pressed && styles.pressed]}><Text style={[styles.reminderOptionText, reminderDaysBefore === offset && styles.reminderOptionTextActive]}>{reminderOffsetLabels[offset]}</Text></Pressable>)}
-              </View>
+              <>
+                <View style={styles.reminderOptions}>
+                  {reminderOffsets.map((offset) => <Pressable key={offset} onPress={() => setReminderDaysBefore(offset)} style={({ pressed }) => [styles.reminderOption, reminderDaysBefore === offset && styles.reminderOptionActive, pressed && styles.pressed]}><Text style={[styles.reminderOptionText, reminderDaysBefore === offset && styles.reminderOptionTextActive]}>{reminderOffsetLabels[offset]}</Text></Pressable>)}
+                </View>
+                <View style={styles.timeField}>
+                  <Text style={styles.timeLabel}>وقت التنبيه</Text>
+                  <View style={styles.timeInputs}>
+                    <TextInput value={reminderHour} onChangeText={setReminderHour} keyboardType="number-pad" maxLength={2} placeholder="09" placeholderTextColor="#98A2B3" style={styles.timeInput} textAlign="center" />
+                    <Text style={styles.timeSeparator}>:</Text>
+                    <TextInput value={reminderMinute} onChangeText={setReminderMinute} keyboardType="number-pad" maxLength={2} placeholder="00" placeholderTextColor="#98A2B3" style={styles.timeInput} textAlign="center" />
+                  </View>
+                  <Text style={styles.timeHint}>الساعة ثم الدقيقة، بحسب توقيت جهازك.</Text>
+                </View>
+              </>
             )}
           </View>
 
@@ -159,6 +180,12 @@ const styles = StyleSheet.create({
   reminderOptionActive: { backgroundColor: "#EAF3FF", borderColor: "#0B5CAD" },
   reminderOptionText: { color: "#667085", fontSize: 12, fontWeight: "700", writingDirection: "rtl" },
   reminderOptionTextActive: { color: "#0B5CAD" },
+  timeField: { alignItems: "flex-end", borderTopColor: "#D5E5F7", borderTopWidth: 1, marginTop: 14, paddingTop: 14 },
+  timeLabel: { color: "#344054", fontSize: 13, fontWeight: "800", writingDirection: "rtl" },
+  timeInputs: { alignItems: "center", flexDirection: "row-reverse", gap: 8, marginTop: 8 },
+  timeInput: { backgroundColor: "#FFFFFF", borderColor: "#BBD4EE", borderRadius: 10, borderWidth: 1, color: "#172033", fontSize: 16, fontWeight: "800", height: 42, width: 58 },
+  timeSeparator: { color: "#0B5CAD", fontSize: 20, fontWeight: "800" },
+  timeHint: { color: "#667085", fontSize: 11, marginTop: 7, textAlign: "right", writingDirection: "rtl" },
   saveButton: { alignItems: "center", backgroundColor: "#0B5CAD", borderRadius: 16, flexDirection: "row-reverse", gap: 7, justifyContent: "center", marginTop: 10, minHeight: 54 },
   saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" },
   pressed: { opacity: 0.72 },
