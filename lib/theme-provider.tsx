@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AccessibilityInfo, Animated, Appearance, Easing, StyleSheet, View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -16,11 +16,18 @@ const THEME_KEY = "abu-mishal.theme.v1";
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useSystemColorScheme() ?? "light";
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>(systemScheme);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [transitionColor, setTransitionColor] = useState(SchemeColors[systemScheme].background);
+  const transitionOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     void AsyncStorage.getItem(THEME_KEY).then((storedScheme) => {
       if (storedScheme === "light" || storedScheme === "dark") setColorSchemeState(storedScheme);
     });
+  }, []);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion).catch(() => setReducedMotion(false));
   }, []);
 
   const applyScheme = useCallback((scheme: ColorScheme) => {
@@ -38,10 +45,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setColorScheme = useCallback(async (scheme: ColorScheme) => {
-    setColorSchemeState(scheme);
-    applyScheme(scheme);
+    if (scheme === colorScheme) return;
+    const updateScheme = () => {
+      setColorSchemeState(scheme);
+      applyScheme(scheme);
+    };
+    if (!reducedMotion) {
+      setTransitionColor(SchemeColors[scheme].background);
+      await new Promise<void>((resolve) => {
+        Animated.timing(transitionOpacity, { toValue: 0.28, duration: 120, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+          updateScheme();
+          Animated.timing(transitionOpacity, { toValue: 0, duration: 180, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => resolve());
+        });
+      });
+    } else {
+      updateScheme();
+    }
     await AsyncStorage.setItem(THEME_KEY, scheme);
-  }, [applyScheme]);
+  }, [applyScheme, colorScheme, reducedMotion, transitionOpacity]);
 
   useEffect(() => {
     applyScheme(colorScheme);
@@ -73,7 +94,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
   return (
     <ThemeContext.Provider value={value}>
-      <View style={[{ flex: 1 }, themeVariables]}>{children}</View>
+      <View style={[{ flex: 1 }, themeVariables]}>
+        {children}
+        <Animated.View pointerEvents="none" style={[styles.themeTransition, { backgroundColor: transitionColor, opacity: transitionOpacity }]} />
+      </View>
     </ThemeContext.Provider>
   );
 }
@@ -85,3 +109,7 @@ export function useThemeContext(): ThemeContextValue {
   }
   return ctx;
 }
+
+const styles = StyleSheet.create({
+  themeTransition: { ...StyleSheet.absoluteFillObject },
+});
