@@ -1,0 +1,25 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { ScreenContainer } from "@/components/screen-container";
+import { useAccount } from "@/hooks/use-account";
+import { startOAuthLogin } from "@/constants/oauth";
+
+export default function AccountScreen() {
+  const router = useRouter();
+  const { user, isAuthenticated, isAccountLoading, logout, role } = useAccount();
+
+  async function signIn() { await startOAuthLogin(); }
+  async function signOut() { await logout(); router.replace("/(tabs)"); }
+
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]}><View style={styles.container}>
+    <View style={styles.nav}><Pressable onPress={() => router.back()} style={styles.closeButton}><Ionicons name="close" size={22} color="#17382F" /></Pressable><View style={styles.navCopy}><Text style={styles.brand}>أبو مشعل</Text><Text style={styles.title}>الحساب والمزامنة</Text></View></View>
+    {isAccountLoading ? <View style={styles.center}><ActivityIndicator color="#0B5D45" /></View> : isAuthenticated ? <>
+      <View style={styles.profile}><View style={styles.avatar}><Ionicons name="person" size={31} color="#0B5D45" /></View><Text style={styles.name}>{user?.name || "حساب أبو مشعل"}</Text><Text style={styles.email}>{user?.email || "تم تسجيل الدخول بنجاح"}</Text><View style={styles.roleBadge}><Text style={styles.roleText}>{role === "supervisor" ? "مشرف" : role === "employee" ? "موظف" : "عميل"}</Text></View></View>
+      <View style={styles.card}><Ionicons name="cloud-done-outline" size={22} color="#0B5D45" /><View style={styles.cardCopy}><Text style={styles.cardTitle}>المزامنة السحابية</Text><Text style={styles.cardBody}>سترتبط طلباتك ومعاملاتك وبيانات العمل بحسابك، مع تطبيق عزل البيانات في الخادم.</Text></View></View>
+      <Pressable onPress={() => void signOut()} style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}><Ionicons name="log-out-outline" size={19} color="#B42318" /><Text style={styles.signOutText}>تسجيل الخروج</Text></Pressable>
+    </> : <View style={styles.center}><View style={styles.avatar}><Ionicons name="shield-checkmark-outline" size={34} color="#0B5D45" /></View><Text style={styles.welcome}>احفظ بياناتك على حسابك</Text><Text style={styles.description}>سجّل الدخول لمزامنة طلباتك وبيانات العمل بين أجهزتك. يتم استخدام الدور الحقيقي للحساب بدلاً من وضع المعاينة المحلي.</Text><Pressable onPress={() => void signIn()} style={({ pressed }) => [styles.signIn, pressed && styles.pressed]}><Ionicons name="log-in-outline" size={20} color="#FFFFFF" /><Text style={styles.signInText}>تسجيل الدخول</Text></Pressable></View>}
+  </View></ScreenContainer>;
+}
+const styles = StyleSheet.create({ container: { flex: 1, padding: 20 }, nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12 }, closeButton: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, navCopy: { alignItems: "flex-end", flex: 1 }, brand: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", writingDirection: "rtl" }, center: { alignItems: "center", flex: 1, justifyContent: "center", paddingHorizontal: 20 }, avatar: { alignItems: "center", backgroundColor: "#E9F5EC", borderRadius: 28, height: 62, justifyContent: "center", width: 62 }, welcome: { color: "#17382F", fontSize: 21, fontWeight: "800", marginTop: 16, writingDirection: "rtl" }, description: { color: "#66756E", fontSize: 13, lineHeight: 21, marginTop: 8, textAlign: "center", writingDirection: "rtl" }, signIn: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 15, flexDirection: "row-reverse", gap: 8, justifyContent: "center", marginTop: 22, minHeight: 52, paddingHorizontal: 22 }, signInText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" }, profile: { alignItems: "center", marginTop: 48 }, name: { color: "#17382F", fontSize: 20, fontWeight: "800", marginTop: 13, writingDirection: "rtl" }, email: { color: "#66756E", fontSize: 13, marginTop: 5, writingDirection: "rtl" }, roleBadge: { backgroundColor: "#E9F5EC", borderRadius: 999, marginTop: 10, paddingHorizontal: 11, paddingVertical: 6 }, roleText: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, card: { alignItems: "flex-start", backgroundColor: "#F2F8F3", borderColor: "#D7E9DB", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", gap: 12, marginTop: 32, padding: 15 }, cardCopy: { alignItems: "flex-end", flex: 1 }, cardTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, cardBody: { color: "#53695E", fontSize: 12, lineHeight: 19, marginTop: 4, textAlign: "right", writingDirection: "rtl" }, signOut: { alignItems: "center", alignSelf: "center", flexDirection: "row-reverse", gap: 7, marginTop: 22, padding: 10 }, signOutText: { color: "#B42318", fontSize: 13, fontWeight: "800", writingDirection: "rtl" }, pressed: { opacity: 0.72 }, });

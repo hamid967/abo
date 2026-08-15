@@ -24,6 +24,11 @@ export default function TransactionDetailScreen() {
   const transactionId = transaction.id;
   const effectiveStatus = isTransactionOverdue(transaction) ? "overdue" : transaction.status;
   const nextStatus = isTerminalStatus(transaction.status) ? undefined : suggestedNextStatus[effectiveStatus];
+  const requirements = effectiveStatus === "awaiting_customer_documents"
+    ? ["إرفاق المستند المطلوب من فريق المتابعة.", "التأكد من وضوح الملفات وصلاحيتها قبل الإرسال."]
+    : effectiveStatus === "payment_required"
+      ? ["مراجعة الرسوم المطلوبة قبل إتمام الإجراء.", "إرفاق إثبات السداد بعد توفره."]
+      : ["احتفظ بالمستندات الأساسية جاهزة عند طلبها.", "راجع الإجراء التالي وتواصل مع الفريق عند الحاجة."];
 
   function confirmDelete() {
     Alert.alert("حذف الطلب؟", "سيُحذف السجل من جهازك ولا يمكن استعادته من التطبيق.", [
@@ -71,6 +76,15 @@ export default function TransactionDetailScreen() {
           <DetailRow icon="calendar-outline" label="موعد المتابعة" value={transaction.dueDate || "لم يُحدّد"} last />
         </View>
 
+        <Text style={styles.sectionTitle}>المتطلبات والإجراء المطلوب</Text>
+        <View style={detailStyles.requirementsCard}>
+          {requirements.map((requirement) => <View key={requirement} style={detailStyles.requirementRow}><Ionicons name="checkmark-circle-outline" size={19} color="#0B5D45" /><Text style={detailStyles.requirementText}>{requirement}</Text></View>)}
+          <View style={detailStyles.actions}>
+            <Pressable onPress={() => router.push("/workspace" as never)} style={({ pressed }) => [detailStyles.action, pressed && styles.pressed]}><Ionicons name="attach-outline" size={18} color="#0B5D45" /><Text style={detailStyles.actionText}>المستندات</Text></Pressable>
+            <Pressable onPress={() => router.push({ pathname: "/inquiries", params: { transactionId, transactionTitle: transaction.title } } as never)} style={({ pressed }) => [detailStyles.action, pressed && styles.pressed]}><Ionicons name="chatbubble-ellipses-outline" size={18} color="#0B5D45" /><Text style={detailStyles.actionText}>إضافة استفسار</Text></Pressable>
+          </View>
+        </View>
+
         {nextStatus && <Pressable onPress={advanceStatus} style={({ pressed }) => [styles.advanceButton, pressed && styles.advancePressed]}><Ionicons name="sync-outline" size={20} color="#FFFFFF" /><Text style={styles.advanceText}>تحديث إلى «{statusDetails[nextStatus].label}»</Text></Pressable>}
 
         <Text style={styles.sectionTitle}>سجل المتابعة</Text>
@@ -84,6 +98,15 @@ export default function TransactionDetailScreen() {
     </ScreenContainer>
   );
 }
+
+const detailStyles = StyleSheet.create({
+  requirementsCard: { backgroundColor: "#FFFFFF", borderColor: "#E2E8E3", borderRadius: 20, borderWidth: 1, gap: 12, padding: 16 },
+  requirementRow: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 9 },
+  requirementText: { color: "#41564B", flex: 1, fontSize: 13, lineHeight: 20, textAlign: "right", writingDirection: "rtl" },
+  actions: { flexDirection: "row-reverse", gap: 9, marginTop: 5 },
+  action: { alignItems: "center", backgroundColor: "#F2F8F3", borderRadius: 12, flex: 1, flexDirection: "row-reverse", gap: 6, justifyContent: "center", minHeight: 43 },
+  actionText: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" },
+});
 
 function DetailRow({ icon, label, value, last }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; last?: boolean }) {
   return <View style={[styles.detailRow, !last && styles.detailBorder]}><Ionicons name={icon} size={19} color="#66756E" /><View style={styles.detailCopy}><Text style={styles.detailValue}>{value}</Text><Text style={styles.detailLabel}>{label}</Text></View></View>;

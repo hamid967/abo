@@ -6,6 +6,8 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { ScreenContainer } from "@/components/screen-container";
 import { BeneficiaryType, TransactionPriority } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
+import { useAccount } from "@/hooks/use-account";
+import { trpc } from "@/lib/trpc";
 
 const beneficiaryOptions: { value: BeneficiaryType; label: string }[] = [
   { value: "individual", label: "فرد" },
@@ -23,6 +25,8 @@ const priorities: { value: TransactionPriority; label: string }[] = [{ value: "l
 export default function NewRequestScreen() {
   const router = useRouter();
   const { addTransaction } = useTransactions();
+  const { isAuthenticated } = useAccount();
+  const createRequest = trpc.requests.create.useMutation();
   const [step, setStep] = useState(0);
   const [beneficiaryType, setBeneficiaryType] = useState<BeneficiaryType>("individual");
   const [serviceType, setServiceType] = useState("");
@@ -35,7 +39,8 @@ export default function NewRequestScreen() {
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<TransactionPriority>("normal");
   const [description, setDescription] = useState("");
-  const [accepted, setAccepted] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   const stepTitle = useMemo(() => ["نوع المستفيد", "الخدمة والجهة", "بيانات الطلب", "مراجعة وإرسال"][step], [step]);
 
@@ -43,7 +48,7 @@ export default function NewRequestScreen() {
     if (step === 1 && (!serviceType || !agency)) return "اختر نوع الخدمة والجهة المرتبطة بالطلب.";
     if (step === 2 && (!title.trim() || !customerName.trim() || !customerPhone.trim())) return "أدخل عنوان الطلب واسم المستفيد ورقم الجوال.";
     if (step === 2 && dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return "اكتب الموعد بالصيغة YYYY-MM-DD، مثل 2026-08-15.";
-    if (step === 3 && !accepted) return "يلزم الموافقة على الإقرار قبل إرسال الطلب.";
+    if (step === 3 && (!acceptedTerms || !acceptedPrivacy)) return "يلزم قبول الشروط وسياسة الخصوصية قبل إرسال الطلب.";
     return undefined;
   }
 
@@ -58,22 +63,39 @@ export default function NewRequestScreen() {
       return;
     }
 
-    const transaction = await addTransaction({
-      title: title.trim(),
-      agency,
-      reference: reference.trim(),
-      status: "received",
-      beneficiaryType,
-      serviceType,
-      priority,
-      city: city.trim() || undefined,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
-      dueDate: dueDate || undefined,
-      notes: description.trim() || undefined,
-      nextAction: "سيُراجع فريق أبو مشعل الطلب ويحدّثك بالإجراء التالي.",
-    });
-    router.replace({ pathname: "/transaction/[id]", params: { id: transaction.id } });
+    if (!isAuthenticated) {
+      Alert.alert("تسجيل الدخول مطلوب", "سجّل الدخول أولاً لحفظ الطلب ومتابعته عبر أجهزتك.", [{ text: "لاحقاً", style: "cancel" }, { text: "تسجيل الدخول", onPress: () => router.push("/account" as never) }]);
+      return;
+    }
+
+    try {
+      const request = await createRequest.mutateAsync({
+        beneficiaryType,
+        title: title.trim(),
+        description: [description.trim(), `الخدمة: ${serviceType}`, `الجهة المرجعية: ${agency}`, reference.trim() ? `المرجع: ${reference.trim()}` : ""].filter(Boolean).join("\n"),
+        city: city.trim() || undefined,
+        priority,
+        desiredDueAt: dueDate ? new Date(`${dueDate}T12:00:00`) : undefined,
+      });
+      const transaction = await addTransaction({
+        title: title.trim(),
+        agency,
+        reference: request.requestNumber,
+        status: "received",
+        beneficiaryType,
+        serviceType,
+        priority,
+        city: city.trim() || undefined,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        dueDate: dueDate || undefined,
+        notes: description.trim() || undefined,
+        nextAction: "تم استلام الطلب. سيُراجع فريق أبو مشعل البيانات ويرسل لك التحديث التالي.",
+      });
+      router.replace({ pathname: "/transaction/[id]", params: { id: transaction.id } });
+    } catch {
+      Alert.alert("تعذر إرسال الطلب", "تم الاحتفاظ بالبيانات داخل النموذج. تحقق من الاتصال ثم أعد المحاولة.");
+    }
   }
 
   return (
@@ -115,15 +137,19 @@ export default function NewRequestScreen() {
               <ReviewRow label="الجهة" value={agency} />
               <ReviewRow label="الإجراء التالي" value="يراجع فريق أبو مشعل الطلب ويرسل لك تحديثاً." />
             </View>
-            <Pressable onPress={() => setAccepted((value) => !value)} style={({ pressed }) => [styles.agreement, pressed && styles.pressed]}>
-              <Ionicons name={accepted ? "checkbox" : "square-outline"} size={23} color={accepted ? "#0B5D45" : "#66756E"} />
-              <Text style={styles.agreementText}>أقر بصحة البيانات وأوافق على سياسة الخصوصية. أفهم أن أبو مشعل منصة مستقلة ولا يمثل أي جهة حكومية.</Text>
+            <Pressable onPress={() => setAcceptedTerms((value) => !value)} style={({ pressed }) => [styles.agreement, pressed && styles.pressed]}>
+              <Ionicons name={acceptedTerms ? "checkbox" : "square-outline"} size={23} color={acceptedTerms ? "#0B5D45" : "#66756E"} />
+              <Text style={styles.agreementText}>أقر بصحة البيانات وأوافق على شروط استخدام منصة أبو مشعل المستقلة.</Text>
+            </Pressable>
+            <Pressable onPress={() => setAcceptedPrivacy((value) => !value)} style={({ pressed }) => [styles.agreement, pressed && styles.pressed]}>
+              <Ionicons name={acceptedPrivacy ? "checkbox" : "square-outline"} size={23} color={acceptedPrivacy ? "#0B5D45" : "#66756E"} />
+              <Text style={styles.agreementText}>أوافق على سياسة الخصوصية، وأفهم أن المتطلبات النهائية تحددها الجهة الحكومية المختصة.</Text>
             </Pressable>
           </>}
 
           <View style={styles.footer}>
             {step > 0 && <Pressable onPress={() => setStep((current) => current - 1)} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Text style={styles.backText}>السابق</Text></Pressable>}
-            <Pressable onPress={continueFlow} style={({ pressed }) => [styles.nextButton, pressed && styles.nextPressed]}><Text style={styles.nextText}>{step === 3 ? "إرسال الطلب" : "متابعة"}</Text><Ionicons name={step === 3 ? "send" : "arrow-back"} size={18} color="#FFFFFF" /></Pressable>
+            <Pressable disabled={createRequest.isPending} onPress={continueFlow} style={({ pressed }) => [styles.nextButton, createRequest.isPending && styles.disabled, pressed && styles.nextPressed]}><Text style={styles.nextText}>{createRequest.isPending ? "جارٍ الإرسال..." : step === 3 ? "إرسال الطلب" : "متابعة"}</Text><Ionicons name={step === 3 ? "send" : "arrow-back"} size={18} color="#FFFFFF" /></Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -144,5 +170,5 @@ function ReviewRow({ label, value }: { label: string; value: string | undefined 
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, content: { padding: 20, paddingBottom: 32 }, nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12, marginBottom: 20 }, closeButton: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, navCopy: { alignItems: "flex-end", flex: 1 }, brand: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", marginTop: 2, writingDirection: "rtl" }, progressCard: { backgroundColor: "#F3F8F4", borderColor: "#D9E8DD", borderRadius: 16, borderWidth: 1, marginBottom: 24, padding: 14 }, progressRow: { flexDirection: "row-reverse", gap: 6 }, progressSegment: { backgroundColor: "#D8E5DD", borderRadius: 99, flex: 1, height: 5 }, progressSegmentActive: { backgroundColor: "#0B5D45" }, progressText: { color: "#557267", fontSize: 12, fontWeight: "700", marginTop: 9, textAlign: "right", writingDirection: "rtl" }, stepSection: { marginBottom: 24 }, stepTitle: { color: "#17382F", fontSize: 19, fontWeight: "800", textAlign: "right", writingDirection: "rtl" }, stepDescription: { color: "#66756E", fontSize: 13, lineHeight: 20, marginTop: 5, textAlign: "right", writingDirection: "rtl" }, choiceList: { gap: 10, marginTop: 16 }, choice: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E1E8E2", borderRadius: 15, borderWidth: 1, flexDirection: "row-reverse", gap: 10, minHeight: 54, paddingHorizontal: 14 }, choiceActive: { backgroundColor: "#F2FAF5", borderColor: "#0B5D45" }, choiceText: { color: "#43544C", fontSize: 14, fontWeight: "700", writingDirection: "rtl" }, choiceTextActive: { color: "#0B5D45" }, field: { marginBottom: 17 }, fieldLabel: { color: "#344D42", fontSize: 13, fontWeight: "800", marginBottom: 8, textAlign: "right", writingDirection: "rtl" }, input: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 14, borderWidth: 1, color: "#17382F", fontSize: 15, minHeight: 52, paddingHorizontal: 14, writingDirection: "rtl" }, notes: { minHeight: 108, paddingTop: 13, textAlignVertical: "top" }, chips: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 20 }, chip: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 999, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 }, chipActive: { backgroundColor: "#E9F5EC", borderColor: "#0B5D45" }, chipText: { color: "#66756E", fontSize: 12, fontWeight: "700", writingDirection: "rtl" }, chipTextActive: { color: "#0B5D45" }, reviewCard: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 18, borderWidth: 1, padding: 16 }, reviewTitle: { color: "#17382F", fontSize: 16, fontWeight: "800", marginBottom: 12, textAlign: "right", writingDirection: "rtl" }, reviewRow: { borderTopColor: "#EDF1ED", borderTopWidth: 1, flexDirection: "row-reverse", justifyContent: "space-between", paddingVertical: 11 }, reviewLabel: { color: "#66756E", fontSize: 12, writingDirection: "rtl" }, reviewValue: { color: "#30493E", flex: 1, fontSize: 12, fontWeight: "700", textAlign: "right", writingDirection: "rtl" }, agreement: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 10, marginTop: 18 }, agreementText: { color: "#50665B", flex: 1, fontSize: 12, lineHeight: 19, textAlign: "right", writingDirection: "rtl" }, footer: { flexDirection: "row-reverse", gap: 10, marginTop: 28 }, nextButton: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 15, flex: 1, flexDirection: "row-reverse", gap: 7, justifyContent: "center", minHeight: 53 }, nextText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" }, backButton: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#CFE0D4", borderRadius: 15, borderWidth: 1, justifyContent: "center", minWidth: 92 }, backText: { color: "#0B5D45", fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, pressed: { opacity: 0.72 }, nextPressed: { opacity: 0.88, transform: [{ scale: 0.98 }] },
+  flex: { flex: 1 }, content: { padding: 20, paddingBottom: 32 }, nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12, marginBottom: 20 }, closeButton: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, navCopy: { alignItems: "flex-end", flex: 1 }, brand: { color: "#0B5D45", fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", marginTop: 2, writingDirection: "rtl" }, progressCard: { backgroundColor: "#F3F8F4", borderColor: "#D9E8DD", borderRadius: 16, borderWidth: 1, marginBottom: 24, padding: 14 }, progressRow: { flexDirection: "row-reverse", gap: 6 }, progressSegment: { backgroundColor: "#D8E5DD", borderRadius: 99, flex: 1, height: 5 }, progressSegmentActive: { backgroundColor: "#0B5D45" }, progressText: { color: "#557267", fontSize: 12, fontWeight: "700", marginTop: 9, textAlign: "right", writingDirection: "rtl" }, stepSection: { marginBottom: 24 }, stepTitle: { color: "#17382F", fontSize: 19, fontWeight: "800", textAlign: "right", writingDirection: "rtl" }, stepDescription: { color: "#66756E", fontSize: 13, lineHeight: 20, marginTop: 5, textAlign: "right", writingDirection: "rtl" }, choiceList: { gap: 10, marginTop: 16 }, choice: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E1E8E2", borderRadius: 15, borderWidth: 1, flexDirection: "row-reverse", gap: 10, minHeight: 54, paddingHorizontal: 14 }, choiceActive: { backgroundColor: "#F2FAF5", borderColor: "#0B5D45" }, choiceText: { color: "#43544C", fontSize: 14, fontWeight: "700", writingDirection: "rtl" }, choiceTextActive: { color: "#0B5D45" }, field: { marginBottom: 17 }, fieldLabel: { color: "#344D42", fontSize: 13, fontWeight: "800", marginBottom: 8, textAlign: "right", writingDirection: "rtl" }, input: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 14, borderWidth: 1, color: "#17382F", fontSize: 15, minHeight: 52, paddingHorizontal: 14, writingDirection: "rtl" }, notes: { minHeight: 108, paddingTop: 13, textAlignVertical: "top" }, chips: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 20 }, chip: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 999, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 }, chipActive: { backgroundColor: "#E9F5EC", borderColor: "#0B5D45" }, chipText: { color: "#66756E", fontSize: 12, fontWeight: "700", writingDirection: "rtl" }, chipTextActive: { color: "#0B5D45" }, reviewCard: { backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 18, borderWidth: 1, padding: 16 }, reviewTitle: { color: "#17382F", fontSize: 16, fontWeight: "800", marginBottom: 12, textAlign: "right", writingDirection: "rtl" }, reviewRow: { borderTopColor: "#EDF1ED", borderTopWidth: 1, flexDirection: "row-reverse", justifyContent: "space-between", paddingVertical: 11 }, reviewLabel: { color: "#66756E", fontSize: 12, writingDirection: "rtl" }, reviewValue: { color: "#30493E", flex: 1, fontSize: 12, fontWeight: "700", textAlign: "right", writingDirection: "rtl" }, agreement: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 10, marginTop: 18 }, agreementText: { color: "#50665B", flex: 1, fontSize: 12, lineHeight: 19, textAlign: "right", writingDirection: "rtl" }, footer: { flexDirection: "row-reverse", gap: 10, marginTop: 28 }, nextButton: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 15, flex: 1, flexDirection: "row-reverse", gap: 7, justifyContent: "center", minHeight: 53 }, nextText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" }, backButton: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#CFE0D4", borderRadius: 15, borderWidth: 1, justifyContent: "center", minWidth: 92 }, backText: { color: "#0B5D45", fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, pressed: { opacity: 0.72 }, nextPressed: { opacity: 0.88, transform: [{ scale: 0.98 }] }, disabled: { opacity: 0.55 },
 });

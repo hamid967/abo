@@ -170,9 +170,19 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("notifications_recipient_idx").on(table.recipientUserId, table.readAt), foreignKey({ columns: [table.recipientUserId], foreignColumns: [users.id], name: "notifications_recipient_fk" }).onDelete("cascade")]);
 
+export const cloudRecords = mysqlTable("cloud_records", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  recordType: mysqlEnum("recordType", ["transactions", "workspace", "inquiries"]).notNull(),
+  payload: json("payload").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("cloud_records_owner_type_unique").on(table.ownerUserId, table.recordType), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "cloud_records_owner_fk" }).onDelete("cascade")]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;
 export type InsertServiceRequest = typeof serviceRequests.$inferInsert;
 export type TransactionRecord = typeof transactions.$inferSelect;
 export type InsertTransactionRecord = typeof transactions.$inferInsert;
+export type CloudRecord = typeof cloudRecords.$inferSelect;

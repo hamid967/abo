@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, InsertServiceRequest, InsertTransactionRecord, serviceRequests, transactions, users } from "../drizzle/schema";
+import { cloudRecords, documents, InsertUser, InsertServiceRequest, InsertTransactionRecord, serviceRequests, transactions, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 
@@ -134,4 +134,25 @@ export async function updateTransactionStatus(id: number, status: InsertTransact
 
 export function assertCanManage(role: string) {
   if (!canManageOperations(role)) throw new Error("FORBIDDEN_OPERATION");
+}
+
+export async function getCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(cloudRecords).where(and(eq(cloudRecords.ownerUserId, ownerUserId), eq(cloudRecords.recordType, recordType))).limit(1);
+  return rows[0];
+}
+
+export async function upsertCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries", payload: unknown) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(cloudRecords).values({ ownerUserId, recordType, payload }).onDuplicateKeyUpdate({ set: { payload, updatedAt: new Date() } });
+  return { success: true } as const;
+}
+
+export async function createUploadedDocument(input: { ownerUserId: number; fileName: string; storageKey: string; mimeType: string; fileSizeBytes: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(documents).values({ ...input, verificationStatus: "pending" });
+  return result[0].insertId;
 }
