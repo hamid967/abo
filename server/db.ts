@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, isNull, like, lt, notInArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { auditLogs, cloudRecords, documents, faqItems, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notifications, organizations, serviceRequests, supportTickets, ticketMessages, transactions, users } from "../drizzle/schema";
+import { appointments, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, faqItems, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, notifications, organizations, serviceRequests, supportTickets, ticketMessages, transactions, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 
@@ -96,6 +96,77 @@ export async function createServiceRequest(input: Omit<InsertServiceRequest, "re
   const requestNumber = `AM-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   const result = await db.insert(serviceRequests).values({ ...input, requestNumber });
   return { id: result[0].insertId, requestNumber };
+}
+
+export type DailyDueCandidate = {
+  resourceType: "request" | "transaction" | "appointment";
+  resourceId: string;
+  recipientUserId: number;
+  title: string;
+  dueAt: Date;
+};
+
+export async function listDailyDueCandidates(before: Date): Promise<DailyDueCandidate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const [requestRows, transactionRows, appointmentRows] = await Promise.all([
+    db.select({ id: serviceRequests.id, recipientUserId: serviceRequests.customerUserId, title: serviceRequests.title, dueAt: serviceRequests.desiredDueAt }).from(serviceRequests).where(and(isNotNull(serviceRequests.desiredDueAt), isNull(serviceRequests.deletedAt), notInArray(serviceRequests.status, ["cancelled"]) as never, lt(serviceRequests.desiredDueAt, before))),
+    db.select({ id: transactions.id, recipientUserId: transactions.customerUserId, referenceNumber: transactions.referenceNumber, dueAt: transactions.dueAt }).from(transactions).where(and(isNotNull(transactions.dueAt), isNull(transactions.deletedAt), notInArray(transactions.status, ["completed", "rejected", "cancelled", "archived"]) as never, lt(transactions.dueAt, before))),
+    db.select({ id: appointments.id, recipientUserId: appointments.customerUserId, title: appointments.title, dueAt: appointments.startsAt }).from(appointments).where(and(eq(appointments.status, "scheduled"), lt(appointments.startsAt, before))),
+  ]);
+  return [
+    ...requestRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "request" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.title, dueAt: row.dueAt })),
+    ...transactionRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "transaction" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.referenceNumber || `معاملة #${row.id}`, dueAt: row.dueAt })),
+    ...appointmentRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "appointment" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.title, dueAt: row.dueAt })),
+  ];
+}
+
+type DailyNotificationKey = Pick<DailyDueCandidate, "recipientUserId" | "resourceType" | "resourceId"> & { notifiedForDate: string };
+
+export async function reserveDailyDueNotification(input: DailyNotificationKey) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.insert(dueNotificationRuns).values(input);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Duplicate") || message.includes("ER_DUP_ENTRY")) return false;
+    throw error;
+  }
+}
+
+export async function releaseDailyDueNotification(input: DailyNotificationKey) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(dueNotificationRuns).where(and(eq(dueNotificationRuns.recipientUserId, input.recipientUserId), eq(dueNotificationRuns.resourceType, input.resourceType), eq(dueNotificationRuns.resourceId, input.resourceId), eq(dueNotificationRuns.notifiedForDate, input.notifiedForDate), isNull(dueNotificationRuns.notificationId)));
+}
+
+export async function finalizeDailyDueNotification(input: DailyNotificationKey & { notificationId: number }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(dueNotificationRuns).set({ notificationId: input.notificationId }).where(and(eq(dueNotificationRuns.recipientUserId, input.recipientUserId), eq(dueNotificationRuns.resourceType, input.resourceType), eq(dueNotificationRuns.resourceId, input.resourceId), eq(dueNotificationRuns.notifiedForDate, input.notifiedForDate)));
+}
+
+export async function getDailyDueScanSchedule() {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(automationSchedules).where(eq(automationSchedules.key, "daily_due_scan")).limit(1);
+  return rows[0];
+}
+
+export async function saveDailyDueScanSchedule(input: { heartbeatTaskUid: string; enabled: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(automationSchedules).values({ key: "daily_due_scan", ...input }).onDuplicateKeyUpdate({ set: { heartbeatTaskUid: input.heartbeatTaskUid, enabled: input.enabled } });
+  return getDailyDueScanSchedule();
+}
+
+export async function updateDailyDueScanRun(input: { success: boolean; summary: unknown }) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  await db.update(automationSchedules).set({ lastRunAt: now, ...(input.success ? { lastSuccessAt: now } : {}), lastSummary: input.summary }).where(eq(automationSchedules.key, "daily_due_scan"));
 }
 
 export async function listServiceRequests(userId: number, role: string) {

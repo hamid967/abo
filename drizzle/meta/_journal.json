@@ -43,6 +43,13 @@
       "when": 1786761492584,
       "tag": "0005_shiny_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1786803896875,
+      "tag": "0006_cuddly_terrax",
+      "breakpoints": true
     }
   ]
 }

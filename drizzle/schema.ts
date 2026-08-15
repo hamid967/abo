@@ -171,6 +171,29 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("notifications_recipient_idx").on(table.recipientUserId, table.readAt), foreignKey({ columns: [table.recipientUserId], foreignColumns: [users.id], name: "notifications_recipient_fk" }).onDelete("cascade")]);
 
+export const automationSchedules = mysqlTable("automation_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 80 }).notNull(),
+  heartbeatTaskUid: varchar("heartbeatTaskUid", { length: 65 }),
+  enabled: boolean("enabled").default(false).notNull(),
+  lastRunAt: timestamp("lastRunAt"),
+  lastSuccessAt: timestamp("lastSuccessAt"),
+  lastSummary: json("lastSummary"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("automation_schedules_key_unique").on(table.key), index("automation_schedules_task_uid_idx").on(table.heartbeatTaskUid)]);
+
+export const dueNotificationRuns = mysqlTable("due_notification_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  recipientUserId: int("recipientUserId").notNull(),
+  resourceType: varchar("resourceType", { length: 32 }).notNull(),
+  resourceId: varchar("resourceId", { length: 120 }).notNull(),
+  notifiedForDate: varchar("notifiedForDate", { length: 10 }).notNull(),
+  notificationId: int("notificationId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("due_notification_runs_unique").on(table.recipientUserId, table.resourceType, table.resourceId, table.notifiedForDate), index("due_notification_runs_date_idx").on(table.notifiedForDate), foreignKey({ columns: [table.recipientUserId], foreignColumns: [users.id], name: "due_notification_runs_recipient_fk" }).onDelete("cascade"), foreignKey({ columns: [table.notificationId], foreignColumns: [notifications.id], name: "due_notification_runs_notification_fk" }).onDelete("set null")]);
+
 export const supportTickets = mysqlTable("support_tickets", {
   id: int("id").autoincrement().primaryKey(),
   customerUserId: int("customerUserId").notNull(),
