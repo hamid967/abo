@@ -265,6 +265,13 @@ export const appRouter = router({
       return result;
     }),
   }),
+  security: router({
+    loginActivity: protectedProcedure.query(async ({ ctx }) => {
+      const result = await db.listLoginActivity(ctx.user.id);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "auth.login_activity_viewed", resourceType: "login_security" });
+      return result;
+    }),
+  }),
   notifications: router({
     list: protectedProcedure.query(({ ctx }) => db.listNotifications(ctx.user.id)),
     markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

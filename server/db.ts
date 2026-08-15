@@ -382,6 +382,16 @@ export async function updateSupportTicket(ticketId: number, input: { status?: "o
   return { success: true } as const;
 }
 
+export async function listLoginActivity(userId: number) {
+  const db = await getDb();
+  if (!db) return { devices: [], alerts: [] };
+  const [devices, alerts] = await Promise.all([
+    db.select({ id: loginSecurityDevices.id, platform: loginSecurityDevices.platform, userAgent: loginSecurityDevices.userAgent, lastSeenAt: loginSecurityDevices.lastSeenAt, createdAt: loginSecurityDevices.createdAt }).from(loginSecurityDevices).where(eq(loginSecurityDevices.userId, userId)).orderBy(desc(loginSecurityDevices.lastSeenAt)).limit(30),
+    db.select({ id: auditLogs.id, metadata: auditLogs.metadata, createdAt: auditLogs.createdAt }).from(auditLogs).where(and(eq(auditLogs.actorUserId, userId), eq(auditLogs.action, "auth.login_security_alert"))).orderBy(desc(auditLogs.createdAt)).limit(50),
+  ]);
+  return { devices, alerts };
+}
+
 export async function listNotifications(userId: number) {
   const db = await getDb();
   if (!db) return [];
