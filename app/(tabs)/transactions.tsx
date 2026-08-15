@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "@/components/empty-state";
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusPill } from "@/components/status-pill";
 import { TransactionCard } from "@/components/transaction-card";
+import { FeedbackState } from "@/components/ui/feedback-state";
 import { isTransactionOverdue, statusDetails, TransactionStatus, transactionStatuses } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
 import { useState } from "react";
@@ -34,7 +35,7 @@ export default function TransactionsScreen() {
   });
 
   if (isLoading) {
-    return <ScreenContainer style={styles.loading}><ActivityIndicator color="#0B5D45" /></ScreenContainer>;
+    return <ScreenContainer style={styles.loading}><FeedbackState kind="loading" title="جارٍ تجهيز معاملاتك" description="نسترجع أحدث حالات المتابعة والمواعيد المسجلة." /></ScreenContainer>;
   }
 
   return (

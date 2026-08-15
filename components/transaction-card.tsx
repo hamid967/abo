@@ -8,6 +8,7 @@ import { GovernmentTransaction, isTransactionOverdue, statusDetails, Transaction
 type TransactionCardProps = {
   transaction: GovernmentTransaction;
   onPress: () => void;
+  variant?: "compact" | "standard";
 };
 
 function formatDueDate(date?: string) {
@@ -24,12 +25,14 @@ function getStage(status: TransactionStatus) {
   return 4;
 }
 
-export function TransactionCard({ transaction, onPress }: TransactionCardProps) {
+export function TransactionCard({ transaction, onPress, variant = "standard" }: TransactionCardProps) {
   const motion = useReducedMotion();
   const computedStatus = isTransactionOverdue(transaction) ? "overdue" : transaction.status;
   const detail = statusDetails[computedStatus];
   const stage = getStage(computedStatus);
   const stageLabel = `المرحلة ${stage} من 4`;
+  const progress = computedStatus === "completed" || computedStatus === "archived" ? 100 : Math.min(stage * 25, 75);
+  const priority = transaction.priority === "urgent" ? { label: "عاجلة", color: "#C84141", background: "#FFF0EF" } : transaction.priority === "high" ? { label: "مرتفعة", color: "#D99022", background: "#FFF4E5" } : null;
   const visual = detail.tone === "green"
     ? { color: "#17804B", soft: "#E8F6EC", icon: "checkmark-done-outline" as const }
     : detail.tone === "amber"
@@ -39,7 +42,7 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
         : { color: "#0B5CAD", soft: "#EAF3FF", icon: "sync-outline" as const };
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { borderRightColor: visual.color }, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${transaction.title}، ${detail.label}، تقدم ${progress} بالمئة`} onPress={onPress} style={({ pressed }) => [styles.card, variant === "compact" && styles.compactCard, { borderRightColor: visual.color }, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}>
       <View style={styles.topRow}>
         <View style={styles.titleBlock}>
           <Text numberOfLines={1} style={styles.title}>{transaction.title}</Text>
@@ -47,6 +50,8 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
         </View>
         <StatusPill status={computedStatus} />
       </View>
+
+      {priority ? <View style={[styles.priorityBadge, { backgroundColor: priority.background }]}><Ionicons name="flag-outline" size={12} color={priority.color} /><Text style={[styles.priorityText, { color: priority.color }]}>{priority.label}</Text></View> : null}
 
       <View style={[styles.statusBand, { backgroundColor: visual.soft }]}>
         <View style={[styles.statusIcon, { backgroundColor: visual.color }]}><Ionicons name={visual.icon} size={18} color="#FFFFFF" /></View>
@@ -58,7 +63,9 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
         <View style={styles.stageTrack}>{[1, 2, 3, 4].map((item) => <View key={item} style={[styles.stageDot, { backgroundColor: item <= stage ? visual.color : "#D9E4DD" }]} />)}</View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={styles.progressRow}><View style={styles.progressTrack}><View style={[styles.progressFill, { backgroundColor: visual.color, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: visual.color }]}>{progress}%</Text></View>
+
+      {variant === "standard" ? <><View style={styles.footer}>
         <View style={styles.metaGroup}>
           <View style={[styles.metaIcon, isTransactionOverdue(transaction) && styles.metaIconUrgent]}><Ionicons name="calendar-outline" size={14} color={isTransactionOverdue(transaction) ? "#B42318" : "#587066"} /></View>
           <Text style={[styles.meta, isTransactionOverdue(transaction) && styles.metaUrgent]}>{formatDueDate(transaction.dueDate)}</Text>
@@ -72,12 +79,14 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
         <Text numberOfLines={1} style={styles.contextText}>آخر تحديث: {new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short" }).format(new Date(transaction.updatedAt))}</Text>
         {transaction.assigneeName ? <Text numberOfLines={1} style={styles.contextText}>المسؤول: {transaction.assigneeName}</Text> : null}
       </View>
+      </> : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: { backgroundColor: "#FFFFFF", borderColor: "#DCE8DF", borderRadius: 20, borderRightWidth: 5, borderWidth: 1, marginBottom: 12, padding: 16 },
+  compactCard: { padding: 13 },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   pressedReduced: { opacity: 0.72 },
   topRow: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 12, justifyContent: "space-between" },
@@ -90,9 +99,15 @@ const styles = StyleSheet.create({
   statusTitle: { fontSize: 12, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
   statusDescription: { color: "#587066", fontSize: 10, lineHeight: 15, marginTop: 2, textAlign: "right", writingDirection: "rtl" },
   stageLabel: { fontSize: 9, fontWeight: "800", marginTop: 4, textAlign: "right", writingDirection: "rtl" },
+  priorityBadge: { alignItems: "center", alignSelf: "flex-end", borderRadius: 999, flexDirection: "row-reverse", gap: 4, marginTop: 9, paddingHorizontal: 8, paddingVertical: 4 },
+  priorityText: { fontSize: 10, fontWeight: "900", writingDirection: "rtl" },
   stageTrack: { flexDirection: "row-reverse", gap: 3 },
   stageDot: { borderRadius: 3, height: 6, width: 6 },
   footer: { borderTopColor: "#E7EFE9", borderTopWidth: 1, flexDirection: "row-reverse", gap: 16, marginTop: 14, paddingTop: 12 },
+  progressRow: { alignItems: "center", flexDirection: "row-reverse", gap: 8, marginTop: 11 },
+  progressTrack: { backgroundColor: "#E7EFE9", borderRadius: 99, flex: 1, height: 6, overflow: "hidden" },
+  progressFill: { borderRadius: 99, height: "100%" },
+  progressText: { fontSize: 10, fontWeight: "900", minWidth: 32, textAlign: "left" },
   metaGroup: { alignItems: "center", flex: 1, flexDirection: "row-reverse", gap: 6, justifyContent: "flex-start" },
   metaIcon: { alignItems: "center", backgroundColor: "#F0F6F1", borderRadius: 8, height: 26, justifyContent: "center", width: 26 },
   metaIconUrgent: { backgroundColor: "#FFF0EF" },
