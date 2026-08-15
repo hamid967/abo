@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState } from "@/components/empty-state";
 import { TransactionCard } from "@/components/transaction-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { useTransactions } from "@/lib/transactions-provider";
+
+const logo = require("@/assets/images/icon.png");
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,7 +34,7 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <View style={styles.brandMark}><Ionicons name="checkmark-done" size={21} color="#FFFFFF" /></View>
+              <View style={styles.brandMark}><Image source={logo} style={styles.brandLogo} /></View>
               <View style={styles.headerText}>
                 <Text style={styles.eyebrow}>أبو مشعل</Text>
                 <Text style={styles.greeting}>معاملاتك أوضح، ومتابعتك أسهل</Text>
@@ -43,6 +45,12 @@ export default function HomeScreen() {
               <Ionicons name="information-circle-outline" size={17} color="#49665B" />
               <Text style={styles.disclaimerText}>منصة مستقلة للمساعدة في المتابعة، ولا تمثل أي جهة حكومية.</Text>
             </View>
+
+            <Pressable onPress={() => router.push("/welcome" as never)} style={({ pressed }) => [styles.introButton, pressed && styles.addButtonPressed]}>
+              <Ionicons name="sparkles-outline" size={18} color="#0B5D45" />
+              <Text style={styles.introButtonText}>تعرّف على تجربة أبو مشعل الجديدة</Text>
+              <Ionicons name="chevron-back" size={18} color="#0B5D45" />
+            </Pressable>
 
             <View style={styles.summaryGrid}>
               <View style={[styles.summaryCard, styles.primarySummary]}>
@@ -104,7 +112,8 @@ const styles = StyleSheet.create({
   loading: { alignItems: "center", justifyContent: "center" },
   content: { padding: 20, paddingBottom: 120 },
   header: { alignItems: "center", flexDirection: "row-reverse", gap: 12, marginBottom: 24 },
-  brandMark: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
+  brandMark: { alignItems: "center", backgroundColor: "#EAF5ED", borderColor: "#D3E7D9", borderRadius: 14, borderWidth: 1, height: 44, justifyContent: "center", width: 44 },
+  brandLogo: { borderRadius: 10, height: 32, width: 32 },
   headerText: { alignItems: "flex-end", flex: 1 },
   eyebrow: { color: "#667085", fontSize: 12, fontWeight: "600", writingDirection: "rtl" },
   greeting: { color: "#172033", fontSize: 20, fontWeight: "800", marginTop: 3, textAlign: "right", writingDirection: "rtl" },
@@ -112,6 +121,8 @@ const styles = StyleSheet.create({
   summaryCard: { backgroundColor: "#FFFFFF", borderColor: "#E6EAF0", borderRadius: 20, borderWidth: 1, flex: 1, minHeight: 134, padding: 16 },
   disclaimer: { alignItems: "flex-start", backgroundColor: "#F4F0E6", borderColor: "#E7D9BD", borderRadius: 14, borderWidth: 1, flexDirection: "row-reverse", gap: 8, marginBottom: 14, padding: 12 },
   disclaimerText: { color: "#49665B", flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right", writingDirection: "rtl" },
+  introButton: { alignItems: "center", backgroundColor: "#F1F8F3", borderColor: "#D7E9DB", borderRadius: 14, borderWidth: 1, flexDirection: "row-reverse", gap: 8, marginBottom: 16, padding: 12 },
+  introButtonText: { color: "#0B5D45", flex: 1, fontSize: 12, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },
   primarySummary: { backgroundColor: "#0B5D45", borderColor: "#0B5D45" },
   summaryNumber: { color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginTop: 12 },
   darkNumber: { color: "#172033" },

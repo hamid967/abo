@@ -100,6 +100,7 @@ export default function RootLayout() {
                   <InquiryProvider>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="welcome" />
                 <Stack.Screen name="transaction/form" />
                 <Stack.Screen name="transaction/[id]" />
                 <Stack.Screen name="workspace/index" />
