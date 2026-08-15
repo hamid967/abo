@@ -76,7 +76,11 @@ export const appRouter = router({
     }),
   }),
   assistant: router({
-    ask: protectedProcedure.input(z.object({ question: z.string().trim().min(3).max(1200) })).mutation(async ({ input }) => ({ answer: await answerGuidanceQuestion(input.question) })),
+    ask: protectedProcedure.input(z.object({ question: z.string().trim().min(3).max(1200), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
+      const response = await answerGuidanceQuestion(input.question, input.language);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.guidance_question", resourceType: "assistant", metadata: { questionLength: input.question.length, sourceCount: response.sources.length } });
+      return response;
+    }),
   }),
   cloud: router({
     get: protectedProcedure.input(z.object({ recordType: cloudRecordTypeSchema })).query(async ({ ctx, input }) => {

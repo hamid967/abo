@@ -1,0 +1,41 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+
+import { ScreenContainer } from "@/components/screen-container";
+import { useAccount } from "@/hooks/use-account";
+import { useLocale } from "@/lib/locale-provider";
+import { trpc } from "@/lib/trpc";
+
+type ChatMessage = { id: string; role: "user" | "assistant"; text: string; sources?: { title: string; sourceLabel: string; sourceUrl: string | null; updatedAt: Date }[] };
+
+export default function AssistantScreen() {
+  const router = useRouter();
+  const { isAuthenticated } = useAccount();
+  const { locale, isArabic, direction } = useLocale();
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const ask = trpc.assistant.ask.useMutation();
+  const text = isArabic ? { title: "مساعد أبو مشعل", subtitle: "إرشاد مبني على مصادر المعرفة المنشورة", notice: "المساعد معلوماتي فقط، ولا يقدم استشارة قانونية ملزمة أو قراراً حكومياً. عند غياب مصدر موثوق، سيوجهك إلى فريق الدعم.", placeholder: "اكتب سؤالك عن متابعة طلبك أو المتطلبات", send: "إرسال", source: "مصادر المعرفة", updated: "آخر تحديث", support: "فتح تذكرة دعم", empty: "ابدأ سؤالك، وسيرد المساعد بما تغطيه المصادر المعتمدة.", signIn: "سجّل الدخول لاستخدام المساعد الإرشادي." } : { title: "Abu Mishal Assistant", subtitle: "Guidance grounded in published knowledge sources", notice: "The assistant is informational only. It does not provide binding legal advice or government decisions. If no trusted source exists, it will direct you to support.", placeholder: "Ask about request follow-up or requirements", send: "Send", source: "Knowledge sources", updated: "Updated", support: "Open a support ticket", empty: "Ask a question and the assistant will respond using approved sources.", signIn: "Sign in to use the guidance assistant." };
+  const send = async () => {
+    const prompt = question.trim();
+    if (prompt.length < 3) return;
+    setQuestion("");
+    const messageId = String(Date.now());
+    setMessages((current) => [...current, { id: messageId, role: "user", text: prompt }]);
+    try {
+      const response = await ask.mutateAsync({ question: prompt, language: locale });
+      setMessages((current) => [...current, { id: `${messageId}-answer`, role: "assistant", text: response.answer, sources: response.sources }]);
+    } catch {
+      setMessages((current) => [...current, { id: `${messageId}-error`, role: "assistant", text: isArabic ? "تعذر إعداد الرد الآن. يمكنك فتح تذكرة دعم ليتابع الفريق معك." : "A response could not be prepared. You can open a support ticket for the team to follow up." }]);
+    }
+  };
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]}><View style={styles.container}>
+    <View style={[styles.header, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Pressable onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color="#17382F" /></Pressable><View style={styles.headerCopy}><Text style={[styles.title, { writingDirection: direction }]}>{text.title}</Text><Text style={[styles.subtitle, { writingDirection: direction }]}>{text.subtitle}</Text></View></View>
+    <View style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Ionicons name="shield-checkmark-outline" size={18} color="#49665B" /><Text style={[styles.noticeText, { writingDirection: direction }]}>{text.notice}</Text></View>
+    {!isAuthenticated ? <Pressable onPress={() => router.push("/account" as never)} style={styles.empty}><Ionicons name="lock-closed-outline" size={32} color="#0B5D45" /><Text style={[styles.emptyText, { writingDirection: direction }]}>{text.signIn}</Text></Pressable> : <><ScrollView contentContainerStyle={styles.messages}>{!messages.length && <View style={styles.empty}><Ionicons name="sparkles-outline" size={32} color="#0B5D45" /><Text style={[styles.emptyText, { writingDirection: direction }]}>{text.empty}</Text></View>}{messages.map((message) => <View key={message.id} style={[styles.message, message.role === "user" ? styles.userMessage : styles.assistantMessage]}><Text style={[styles.messageText, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{message.text}</Text>{message.role === "assistant" && message.sources?.length ? <View style={styles.sources}><Text style={[styles.sourceTitle, { writingDirection: direction }]}>{text.source}</Text>{message.sources.map((source, index) => <View key={`${source.title}-${index}`} style={styles.sourceRow}><Ionicons name="book-outline" size={14} color="#0B5D45" /><View style={styles.sourceCopy}><Text style={[styles.sourceName, { writingDirection: direction }]}>{source.title}</Text><Text style={[styles.sourceMeta, { writingDirection: direction }]}>{source.sourceLabel} · {text.updated} {new Date(source.updatedAt).toLocaleDateString(isArabic ? "ar-SA" : "en-US")}</Text></View></View>)}</View> : null}</View>)}</ScrollView><View style={[styles.composer, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={question} onChangeText={setQuestion} multiline placeholder={text.placeholder} placeholderTextColor="#93A39C" style={[styles.input, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]} /><Pressable onPress={() => void send()} disabled={ask.isPending} style={({ pressed }) => [styles.send, (pressed || ask.isPending) && styles.pressed]}><Ionicons name="send" size={18} color="#FFFFFF" /></Pressable></View><Pressable onPress={() => router.push("/inquiries" as never)} style={styles.supportButton}><Ionicons name="help-buoy-outline" size={16} color="#0B5D45" /><Text style={[styles.supportText, { writingDirection: direction }]}>{text.support}</Text></Pressable></>}
+  </View></ScreenContainer>;
+}
+
+const styles = StyleSheet.create({ container: { flex: 1, padding: 20 }, header: { alignItems: "center", gap: 12 }, close: { alignItems: "center", backgroundColor: "#F0F4F0", borderRadius: 13, height: 42, justifyContent: "center", width: 42 }, headerCopy: { alignItems: "flex-end", flex: 1 }, title: { color: "#17382F", fontSize: 22, fontWeight: "800", textAlign: "right" }, subtitle: { color: "#66756E", fontSize: 12, marginTop: 4, textAlign: "right" }, notice: { alignItems: "flex-start", backgroundColor: "#F4F0E6", borderColor: "#E7D9BD", borderRadius: 14, borderWidth: 1, gap: 8, marginTop: 18, padding: 12 }, noticeText: { color: "#49665B", flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right" }, messages: { flexGrow: 1, gap: 10, paddingVertical: 16 }, message: { borderRadius: 15, padding: 12 }, userMessage: { alignSelf: "flex-end", backgroundColor: "#0B5D45", maxWidth: "86%" }, assistantMessage: { alignSelf: "stretch", backgroundColor: "#F2F8F3", borderColor: "#D7E9DB", borderWidth: 1 }, messageText: { color: "#FFFFFF", fontSize: 13, lineHeight: 21 }, sources: { borderTopColor: "#D7E9DB", borderTopWidth: 1, gap: 7, marginTop: 11, paddingTop: 10 }, sourceTitle: { color: "#0B5D45", fontSize: 11, fontWeight: "800", textAlign: "right" }, sourceRow: { alignItems: "flex-start", flexDirection: "row-reverse", gap: 7 }, sourceCopy: { alignItems: "flex-end", flex: 1 }, sourceName: { color: "#25463A", fontSize: 11, fontWeight: "800", textAlign: "right" }, sourceMeta: { color: "#6A7C73", fontSize: 10, marginTop: 2, textAlign: "right" }, composer: { alignItems: "flex-end", backgroundColor: "#FFFFFF", borderColor: "#DCE7DE", borderRadius: 16, borderWidth: 1, gap: 8, minHeight: 58, padding: 8 }, input: { color: "#17382F", flex: 1, fontSize: 13, maxHeight: 100, paddingHorizontal: 5, textAlignVertical: "center" }, send: { alignItems: "center", backgroundColor: "#0B5D45", borderRadius: 11, height: 40, justifyContent: "center", width: 42 }, supportButton: { alignItems: "center", alignSelf: "center", flexDirection: "row-reverse", gap: 6, marginTop: 9, padding: 8 }, supportText: { color: "#0B5D45", fontSize: 12, fontWeight: "800" }, empty: { alignItems: "center", backgroundColor: "#F7FAF8", borderColor: "#E1E9E3", borderRadius: 18, borderStyle: "dashed", borderWidth: 1, marginTop: 20, padding: 28 }, emptyText: { color: "#66756E", fontSize: 13, lineHeight: 20, marginTop: 8, textAlign: "center" }, pressed: { opacity: 0.7 } });

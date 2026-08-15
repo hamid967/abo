@@ -108,6 +108,7 @@ export default function RootLayout() {
                 <Stack.Screen name="notifications/index" />
                 <Stack.Screen name="knowledge/index" />
                 <Stack.Screen name="search/index" />
+                <Stack.Screen name="assistant/index" />
                 <Stack.Screen name="reports/index" />
                 <Stack.Screen name="account/index" />
                 <Stack.Screen name="oauth/callback" />
