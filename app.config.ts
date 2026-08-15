@@ -87,6 +87,13 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-notifications",
+      {
+        "defaultChannel": "government-deadlines",
+        "color": "#0B5CAD"
+      }
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",

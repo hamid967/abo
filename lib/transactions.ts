@@ -1,3 +1,5 @@
+import { ReminderSettings } from "@/lib/reminders";
+
 export const transactionStatuses = [
   "new",
   "under_review",
@@ -17,6 +19,7 @@ export type GovernmentTransaction = {
   dueDate?: string;
   updatedAt: string;
   notes?: string;
+  reminder?: ReminderSettings;
 };
 
 export type TransactionDraft = Omit<GovernmentTransaction, "id" | "updatedAt">;

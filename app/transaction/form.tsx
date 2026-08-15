@@ -6,6 +6,8 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { ScreenContainer } from "@/components/screen-container";
 import { statusDetails, TransactionStatus, transactionStatuses } from "@/lib/transactions";
 import { useTransactions } from "@/lib/transactions-provider";
+import { canScheduleReminder, reminderOffsetLabels, ReminderOffsetDays, reminderOffsets } from "@/lib/reminders";
+import { requestReminderPermission } from "@/lib/notification-service";
 
 const editableStatuses = transactionStatuses.filter((status) => status !== "overdue");
 
@@ -20,6 +22,8 @@ export default function TransactionFormScreen() {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<TransactionStatus>("new");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState<ReminderOffsetDays>(3);
 
   useEffect(() => {
     if (!existing) return;
@@ -29,9 +33,11 @@ export default function TransactionFormScreen() {
     setDueDate(existing.dueDate ?? "");
     setNotes(existing.notes ?? "");
     setStatus(existing.status === "overdue" ? "action_required" : existing.status);
+    setReminderEnabled(existing.reminder?.enabled ?? false);
+    setReminderDaysBefore(existing.reminder?.daysBefore ?? 3);
   }, [existing]);
 
-  function handleSave() {
+  async function handleSave() {
     if (!title.trim() || !agency.trim()) {
       Alert.alert("أكمل البيانات الأساسية", "أدخل اسم المعاملة والجهة الحكومية قبل الحفظ.");
       return;
@@ -40,10 +46,25 @@ export default function TransactionFormScreen() {
       Alert.alert("تنسيق التاريخ غير صحيح", "اكتب التاريخ بالصيغة YYYY-MM-DD، مثل 2026-08-15.");
       return;
     }
+    if (reminderEnabled && !dueDate) {
+      Alert.alert("أضف موعداً أولاً", "يحتاج التذكير إلى تاريخ موعد متوقع للمعاملة.");
+      return;
+    }
+    if (reminderEnabled && !canScheduleReminder(dueDate, reminderDaysBefore)) {
+      Alert.alert("اختر موعداً مستقبلياً", "غيّر تاريخ المتابعة أو وقت التذكير ليكون بعد الوقت الحالي.");
+      return;
+    }
 
-    const draft = { title: title.trim(), agency: agency.trim(), reference: reference.trim(), dueDate: dueDate || undefined, notes: notes.trim() || undefined, status };
-    if (existing) updateTransaction(existing.id, draft);
-    else addTransaction(draft);
+    if (reminderEnabled) {
+      const permissionGranted = await requestReminderPermission();
+      if (!permissionGranted) {
+        Alert.alert("لم يتم تفعيل الإشعارات", "سيُحفظ التذكير، ويمكنك تفعيل إذن الإشعارات من إعدادات الجهاز لاحقاً.");
+      }
+    }
+
+    const draft = { title: title.trim(), agency: agency.trim(), reference: reference.trim(), dueDate: dueDate || undefined, notes: notes.trim() || undefined, status, reminder: { enabled: reminderEnabled, daysBefore: reminderDaysBefore } };
+    if (existing) await updateTransaction(existing.id, draft);
+    else await addTransaction(draft);
     router.back();
   }
 
@@ -62,6 +83,19 @@ export default function TransactionFormScreen() {
           <FormField label="الجهة الحكومية" value={agency} onChangeText={setAgency} placeholder="مثال: إدارة المرور" required />
           <FormField label="الرقم المرجعي" value={reference} onChangeText={setReference} placeholder="رقم الطلب أو المعاملة" />
           <FormField label="موعد المتابعة" value={dueDate} onChangeText={setDueDate} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+
+          <View style={styles.reminderCard}>
+            <Pressable onPress={() => setReminderEnabled((current) => !current)} style={({ pressed }) => [styles.reminderToggle, pressed && styles.pressed]}>
+              <View style={[styles.reminderSwitch, reminderEnabled && styles.reminderSwitchActive]}><View style={[styles.reminderKnob, reminderEnabled && styles.reminderKnobActive]} /></View>
+              <View style={styles.reminderCopy}><Text style={styles.reminderTitle}>تذكير بموعد المعاملة</Text><Text style={styles.reminderBody}>{reminderEnabled ? "سيظهر تنبيه محلي قبل الموعد المحدد." : "فعّل تنبيهاً لموعد المتابعة أو الانتهاء."}</Text></View>
+              <Ionicons name={reminderEnabled ? "notifications" : "notifications-outline"} size={21} color={reminderEnabled ? "#0B5CAD" : "#667085"} />
+            </Pressable>
+            {reminderEnabled && (
+              <View style={styles.reminderOptions}>
+                {reminderOffsets.map((offset) => <Pressable key={offset} onPress={() => setReminderDaysBefore(offset)} style={({ pressed }) => [styles.reminderOption, reminderDaysBefore === offset && styles.reminderOptionActive, pressed && styles.pressed]}><Text style={[styles.reminderOptionText, reminderDaysBefore === offset && styles.reminderOptionTextActive]}>{reminderOffsetLabels[offset]}</Text></Pressable>)}
+              </View>
+            )}
+          </View>
 
           <Text style={styles.fieldLabel}>الحالة الحالية</Text>
           <View style={styles.statusChoices}>
@@ -111,6 +145,20 @@ const styles = StyleSheet.create({
   statusChoiceActive: { backgroundColor: "#EAF3FF", borderColor: "#0B5CAD" },
   statusChoiceText: { color: "#667085", fontSize: 13, fontWeight: "700", writingDirection: "rtl" },
   statusChoiceTextActive: { color: "#0B5CAD" },
+  reminderCard: { backgroundColor: "#F7FAFE", borderColor: "#D5E5F7", borderRadius: 16, borderWidth: 1, marginBottom: 20, padding: 14 },
+  reminderToggle: { alignItems: "center", flexDirection: "row-reverse", gap: 11 },
+  reminderCopy: { alignItems: "flex-end", flex: 1 },
+  reminderTitle: { color: "#172033", fontSize: 14, fontWeight: "800", writingDirection: "rtl" },
+  reminderBody: { color: "#667085", fontSize: 12, lineHeight: 18, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
+  reminderSwitch: { backgroundColor: "#CBD5E1", borderRadius: 99, padding: 3, width: 39 },
+  reminderSwitchActive: { backgroundColor: "#0B5CAD" },
+  reminderKnob: { backgroundColor: "#FFFFFF", borderRadius: 20, height: 16, width: 16 },
+  reminderKnobActive: { alignSelf: "flex-end" },
+  reminderOptions: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  reminderOption: { backgroundColor: "#FFFFFF", borderColor: "#D5E5F7", borderRadius: 999, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 8 },
+  reminderOptionActive: { backgroundColor: "#EAF3FF", borderColor: "#0B5CAD" },
+  reminderOptionText: { color: "#667085", fontSize: 12, fontWeight: "700", writingDirection: "rtl" },
+  reminderOptionTextActive: { color: "#0B5CAD" },
   saveButton: { alignItems: "center", backgroundColor: "#0B5CAD", borderRadius: 16, flexDirection: "row-reverse", gap: 7, justifyContent: "center", marginTop: 10, minHeight: 54 },
   saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", writingDirection: "rtl" },
   pressed: { opacity: 0.72 },

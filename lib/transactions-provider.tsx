@@ -7,16 +7,17 @@ import {
   TransactionDraft,
   TransactionStatus,
 } from "@/lib/transactions";
+import { cancelTransactionReminder, scheduleTransactionReminder } from "@/lib/notification-service";
 
 const STORAGE_KEY = "government-transactions:v1";
 
 type TransactionContextValue = {
   transactions: GovernmentTransaction[];
   isLoading: boolean;
-  addTransaction: (draft: TransactionDraft) => GovernmentTransaction;
-  updateTransaction: (id: string, patch: Partial<TransactionDraft>) => void;
-  updateStatus: (id: string, status: TransactionStatus) => void;
-  deleteTransaction: (id: string) => void;
+  addTransaction: (draft: TransactionDraft) => Promise<GovernmentTransaction>;
+  updateTransaction: (id: string, patch: Partial<TransactionDraft>) => Promise<GovernmentTransaction | undefined>;
+  updateStatus: (id: string, status: TransactionStatus) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
 };
 
 const TransactionContext = createContext<TransactionContextValue | undefined>(undefined);
@@ -45,45 +46,46 @@ export function TransactionProvider({ children }: PropsWithChildren) {
     void hydrateTransactions();
   }, []);
 
-  const addTransaction = useCallback((draft: TransactionDraft) => {
+  const addTransaction = useCallback(async (draft: TransactionDraft) => {
     const transaction = createTransaction(draft);
-    setTransactions((current) => {
-      const next = [transaction, ...current];
-      void persistTransactions(next);
-      return next;
-    });
-    return transaction;
-  }, []);
+    const reminder = await scheduleTransactionReminder(transaction);
+    const scheduledTransaction = { ...transaction, reminder };
+    setTransactions((current) => [scheduledTransaction, ...current]);
+    await persistTransactions([scheduledTransaction, ...transactions]);
+    return scheduledTransaction;
+  }, [transactions]);
 
-  const updateTransaction = useCallback((id: string, patch: Partial<TransactionDraft>) => {
-    setTransactions((current) => {
-      const next = current.map((transaction) =>
-        transaction.id === id
-          ? { ...transaction, ...patch, updatedAt: new Date().toISOString() }
-          : transaction,
-      );
-      void persistTransactions(next);
-      return next;
-    });
-  }, []);
+  const updateTransaction = useCallback(async (id: string, patch: Partial<TransactionDraft>) => {
+    const existing = transactions.find((transaction) => transaction.id === id);
+    if (!existing) return undefined;
+    await cancelTransactionReminder(existing.reminder);
+    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    const reminder = await scheduleTransactionReminder(updated);
+    const scheduledTransaction = { ...updated, reminder };
+    const next = transactions.map((transaction) => transaction.id === id ? scheduledTransaction : transaction);
+    setTransactions(next);
+    await persistTransactions(next);
+    return scheduledTransaction;
+  }, [transactions]);
 
-  const updateStatus = useCallback((id: string, status: TransactionStatus) => {
-    setTransactions((current) => {
-      const next = current.map((transaction) =>
-        transaction.id === id ? { ...transaction, status, updatedAt: new Date().toISOString() } : transaction,
-      );
-      void persistTransactions(next);
-      return next;
-    });
-  }, []);
+  const updateStatus = useCallback(async (id: string, status: TransactionStatus) => {
+    const existing = transactions.find((transaction) => transaction.id === id);
+    if (!existing) return;
+    await cancelTransactionReminder(existing.reminder);
+    const updated = { ...existing, status, updatedAt: new Date().toISOString() };
+    const reminder = await scheduleTransactionReminder(updated);
+    const next = transactions.map((transaction) => transaction.id === id ? { ...updated, reminder } : transaction);
+    setTransactions(next);
+    await persistTransactions(next);
+  }, [transactions]);
 
-  const deleteTransaction = useCallback((id: string) => {
-    setTransactions((current) => {
-      const next = current.filter((transaction) => transaction.id !== id);
-      void persistTransactions(next);
-      return next;
-    });
-  }, []);
+  const deleteTransaction = useCallback(async (id: string) => {
+    const existing = transactions.find((transaction) => transaction.id === id);
+    await cancelTransactionReminder(existing?.reminder);
+    const next = transactions.filter((transaction) => transaction.id !== id);
+    setTransactions(next);
+    await persistTransactions(next);
+  }, [transactions]);
 
   const value = useMemo(
     () => ({ transactions, isLoading, addTransaction, updateTransaction, updateStatus, deleteTransaction }),
