@@ -98,7 +98,7 @@ export default function RootLayout() {
               <TransactionProvider>
                 <WorkspaceProvider>
                   <InquiryProvider>
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack initialRouteName="welcome" screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="welcome" />
                 <Stack.Screen name="transaction/form" />

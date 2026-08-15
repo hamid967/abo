@@ -46,7 +46,7 @@ export default function HomeScreen() {
               <Text style={styles.disclaimerText}>منصة مستقلة للمساعدة في المتابعة، ولا تمثل أي جهة حكومية.</Text>
             </View>
 
-            <Pressable onPress={() => router.push("/welcome" as never)} style={({ pressed }) => [styles.introButton, pressed && styles.addButtonPressed]}>
+            <Pressable onPress={() => router.push("/welcome?preview=1" as never)} style={({ pressed }) => [styles.introButton, pressed && styles.addButtonPressed]}>
               <Ionicons name="sparkles-outline" size={18} color="#0B5D45" />
               <Text style={styles.introButtonText}>تعرّف على تجربة أبو مشعل الجديدة</Text>
               <Ionicons name="chevron-back" size={18} color="#0B5D45" />
