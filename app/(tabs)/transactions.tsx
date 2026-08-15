@@ -48,7 +48,7 @@ export default function TransactionsScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.titleRow}>
-              <Pressable onPress={() => router.push("/request/new" as never)} style={({ pressed }) => [styles.addIcon, pressed && styles.pressed]}>
+              <Pressable onPress={() => router.push("/assistant/request-intake" as never)} style={({ pressed }) => [styles.addIcon, pressed && styles.pressed]}>
                 <Ionicons name="add" size={24} color="#FFFFFF" />
               </Pressable>
               <View style={styles.titleCopy}>
@@ -91,7 +91,7 @@ export default function TransactionsScreen() {
           </>
         }
         renderItem={({ item }) => <TransactionCard transaction={item} onPress={() => router.push({ pathname: "/transaction/[id]", params: { id: item.id } })} />}
-        ListEmptyComponent={<EmptyState onAdd={() => router.push("/request/new" as never)} />}
+        ListEmptyComponent={<EmptyState onAdd={() => router.push("/assistant/request-intake" as never)} />}
       />
     </ScreenContainer>
   );

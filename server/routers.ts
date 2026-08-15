@@ -7,8 +7,14 @@ import { z } from "zod";
 import { canAccessCustomerRecord, canManageKnowledge, canManageOperations, canOperateTransactions, canViewAuditLogs, canViewSystemDashboard } from "./authorization";
 import * as db from "./db";
 import { answerGuidanceQuestion, guideRequestIntake, requestIntakeStageSchema } from "./abu-mishal-assistant";
+import { detectRequestIntent, draftPatchFromDetection } from "./intent-detection";
+import { requestDraftPatchSchema } from "./request-draft-policy";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
 import { storagePut } from "./storage";
+import { emitAndProcessAutomationEvent } from "./automation-engine";
+import { defaultAutomationRules } from "./default-automation-rules";
+import { validateQuietHours } from "./notification-preferences-policy";
+import { checkAssistantRateLimit } from "./assistant-rate-limit";
 
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -71,6 +77,7 @@ export const appRouter = router({
       if (!transaction || !canAccessCustomerRecord(ctx.user.role, transaction.customerUserId, ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
       if (!canOperateTransactions(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
       await db.updateTransactionStatus(input.id, input.status, input.nextAction, input.assigneeUserId);
+      await emitAndProcessAutomationEvent({ eventName: "transaction.status_changed", aggregateType: "transaction", aggregateId: String(input.id), ownerUserId: transaction.customerUserId, payload: { transactionId: input.id, status: input.status, automationOrigin: false }, idempotencyKey: `transaction-status:${input.id}:${input.status}:${Date.now()}` });
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "transaction.status_updated", resourceType: "transaction", resourceId: input.id, metadata: { status: input.status } });
       return { success: true };
     }),
@@ -95,6 +102,102 @@ export const appRouter = router({
       const response = await guideRequestIntake(input);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.request_intake_guidance", resourceType: "assistant", metadata: { stage: input.stage, messageLength: input.message.length } });
       return response;
+    }),
+  }),
+  executiveAssistant: router({
+    start: protectedProcedure.input(z.object({ language: z.enum(["ar", "en"]).default("ar"), idempotencyKey: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const allowance = checkAssistantRateLimit({ userId: ctx.user.id, action: "start" });
+      if (!allowance.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "ASSISTANT_RATE_LIMITED" });
+      const session = await db.createRequestConversation({ ownerUserId: ctx.user.id, language: input.language, idempotencyKey: input.idempotencyKey });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.conversation_started", resourceType: "ai_conversation", resourceId: session.conversation?.id, metadata: { reused: session.reused } });
+      return session;
+    }),
+    detail: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).query(async ({ ctx, input }) => {
+      const session = await db.getRequestConversation(ctx.user.id, input.conversationId);
+      if (!session?.conversation) throw new TRPCError({ code: "NOT_FOUND" });
+      const messages = await db.listConversationMessages(ctx.user.id, input.conversationId);
+      return { ...session, messages };
+    }),
+    listDrafts: protectedProcedure.query(({ ctx }) => db.listActiveRequestDrafts(ctx.user.id)),
+    updateDraft: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), patch: requestDraftPatchSchema })).mutation(async ({ ctx, input }) => {
+      const session = await db.updateRequestDraftFields({ ownerUserId: ctx.user.id, conversationId: input.conversationId, patch: input.patch });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_updated", resourceType: "request_draft", resourceId: session?.draft?.id, metadata: { fields: Object.keys(input.patch) } });
+      return session;
+    }),
+    validateDraft: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const result = await db.validateRequestDraft(ctx.user.id, input.conversationId);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_validated", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { validationStatus: result.validationStatus, resultCount: result.results.length } });
+      return result;
+    }),
+    transition: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), nextState: z.enum(["identifying_intent", "selecting_beneficiary", "selecting_service", "selecting_entity", "collecting_information", "collecting_documents", "validating_information", "reviewing_summary", "awaiting_confirmation", "needs_human_review", "cancelled"]) })).mutation(async ({ ctx, input }) => {
+      try {
+        return await db.moveConversationState(ctx.user.id, input.conversationId, input.nextState);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("INVALID_CONVERSATION_TRANSITION")) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid conversation state transition." });
+        throw error;
+      }
+    }),
+    prepareReview: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const result = await db.prepareDraftReview(ctx.user.id, input.conversationId);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.review_prepared", resourceType: "request_draft", resourceId: result?.draft?.id, metadata: { summaryVersion: result?.draft?.summaryVersion } });
+      return result;
+    }),
+    recordConsent: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), consentType: z.enum(["terms", "privacy", "request_submission"]) })).mutation(async ({ ctx, input }) => {
+      const result = await db.recordDraftConsent({ ownerUserId: ctx.user.id, ...input });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.consent_recorded", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { consentType: input.consentType, summaryVersion: result.summaryVersion } });
+      return result;
+    }),
+    submitDraft: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.submitRequestDraft(ctx.user.id, input.conversationId, input.language);
+        if (!result.alreadySubmitted && result.transactionId) await emitAndProcessAutomationEvent({ eventName: "request.created", aggregateType: "service_request", aggregateId: String(result.requestId), ownerUserId: ctx.user.id, payload: { requestId: result.requestId, transactionId: result.transactionId, automationOrigin: false }, idempotencyKey: `request-created:${result.requestId}` });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "SUBMISSION_FAILED";
+        if (["EXPLICIT_CONSENT_REQUIRED", "SUBMISSION_IN_PROGRESS", "DRAFT_NOT_FOUND"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+    listDraftDocuments: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).query(({ ctx, input }) => db.listDraftDocuments(ctx.user.id, input.conversationId)),
+    attachDocument: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), documentId: z.number().int().positive(), requirementKey: z.string().trim().max(120).optional() })).mutation(async ({ ctx, input }) => {
+      const result = await db.attachDocumentToDraft({ ownerUserId: ctx.user.id, ...input });
+      await emitAndProcessAutomationEvent({ eventName: "draft.document_attached", aggregateType: "ai_conversation", aggregateId: input.conversationId, ownerUserId: ctx.user.id, payload: { documentId: input.documentId, automationOrigin: false }, idempotencyKey: `draft-document:${input.conversationId}:${input.documentId}` });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_document_attached", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { documentId: input.documentId } });
+      return result;
+    }),
+    removeDocument: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), documentId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const result = await db.removeDocumentFromDraft({ ownerUserId: ctx.user.id, ...input });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_document_removed", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { documentId: input.documentId } });
+      return result;
+    }),
+    requestHumanHandoff: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), reason: z.string().trim().min(3).max(255), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
+      const result = await db.requestHumanHandoff({ ownerUserId: ctx.user.id, ...input });
+      if (!result.reused) await emitAndProcessAutomationEvent({ eventName: "conversation.handoff_requested", aggregateType: "ai_conversation", aggregateId: input.conversationId, ownerUserId: ctx.user.id, payload: { handoffId: result.handoffId, ticketId: result.ticketId, automationOrigin: false }, idempotencyKey: `handoff-requested:${result.handoffId}` });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.human_handoff_requested", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { handoffId: result.handoffId, ticketId: result.ticketId, reused: result.reused } });
+      return result;
+    }),
+    sendMessage: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), message: z.string().trim().min(1).max(4000), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
+      const allowance = checkAssistantRateLimit({ userId: ctx.user.id, action: "message" });
+      if (!allowance.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "ASSISTANT_RATE_LIMITED" });
+      const session = await db.getRequestConversation(ctx.user.id, input.conversationId);
+      if (!session?.conversation) throw new TRPCError({ code: "NOT_FOUND" });
+      try {
+        const detection = await detectRequestIntent({ message: input.message, language: input.language });
+        await db.appendConversationMessage({ ownerUserId: ctx.user.id, conversationId: input.conversationId, role: "user", content: input.message, metadata: { intent: detection.intent, confidence: detection.confidence } });
+        const draftPatch = draftPatchFromDetection(detection);
+        const updatedSession = Object.keys(draftPatch).length ? await db.updateRequestDraftFields({ ownerUserId: ctx.user.id, conversationId: input.conversationId, patch: draftPatch }) : session;
+        if (session.conversation.currentState === "started") await db.saveConversationProgress({ ownerUserId: ctx.user.id, conversationId: input.conversationId, nextState: "identifying_intent" });
+        const reply = input.language === "ar"
+          ? (detection.requiresHumanReview ? "شكرًا، سيتولى فريق المتابعة مراجعة هذا الطلب معك. لن ننفذ أي إجراء حساس عبر المحادثة." : "أبشر، سجلت التفاصيل الأولية. سأكمل معك سؤالاً واحداً في كل مرة قبل عرض الملخص للمراجعة.")
+          : (detection.requiresHumanReview ? "Thank you. The support team will review this with you; no sensitive action will be completed in chat." : "I recorded the initial details. I will continue with one main question at a time before showing a review summary.");
+        await db.appendConversationMessage({ ownerUserId: ctx.user.id, conversationId: input.conversationId, role: "assistant", content: reply, metadata: { intent: detection.intent } });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.intent_detected", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { intent: detection.intent, confidence: detection.confidence, humanReview: detection.requiresHumanReview } });
+        return { detection, reply, draft: updatedSession?.draft ?? null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "INVALID_MESSAGE";
+        if (message === "SENSITIVE_CONVERSATION_CONTENT" || message === "INVALID_CHAT_MESSAGE") throw new TRPCError({ code: "BAD_REQUEST", message: "Sensitive or invalid message content." });
+        throw error;
+      }
     }),
   }),
   cloud: router({
@@ -170,6 +273,17 @@ export const appRouter = router({
       return result;
     }),
   }),
+  notificationPreferences: router({
+    get: protectedProcedure.query(({ ctx }) => db.getNotificationPreferences(ctx.user.id)),
+    update: protectedProcedure.input(z.object({ inAppEnabled: z.boolean(), digestFrequency: z.enum(["immediate", "daily"]), quietHoursEnabled: z.boolean(), quietStartHour: z.number().int().min(0).max(23).nullable().optional(), quietEndHour: z.number().int().min(0).max(23).nullable().optional() })).mutation(async ({ ctx, input }) => {
+      const quiet = validateQuietHours({ enabled: input.quietHoursEnabled, start: input.quietStartHour, end: input.quietEndHour });
+      if (!quiet.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid quiet hours" });
+      const result = await db.updateNotificationPreferences({ userId: ctx.user.id, ...input, quietStartHour: quiet.start, quietEndHour: quiet.end });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "notification.preferences_updated", resourceType: "notification_preferences", resourceId: ctx.user.id });
+      return result;
+    }),
+    deliveryLog: protectedProcedure.query(({ ctx }) => db.listNotificationDeliveryLogs(ctx.user.id)),
+  }),
   knowledge: router({
     list: protectedProcedure.input(z.object({ language: knowledgeLanguageSchema.default("ar") })).query(({ input }) => db.listPublishedKnowledge(input.language)),
     createArticle: protectedProcedure.input(z.object({ title: z.string().trim().min(3).max(255), excerpt: z.string().trim().max(1200).optional(), content: z.string().trim().min(10).max(12000), category: z.string().trim().max(120).optional(), language: knowledgeLanguageSchema.default("ar"), sourceLabel: z.string().trim().max(255).optional(), sourceUrl: z.string().url().max(1024).optional() })).mutation(async ({ ctx, input }) => {
@@ -204,6 +318,21 @@ export const appRouter = router({
       const overview = await db.getSystemTransactionDashboard(input.status, input.search);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: input.search ? "admin.dashboard_search" : "admin.dashboard_view", resourceType: "admin_dashboard", metadata: { status: input.status ?? null, searchLength: input.search?.length ?? 0 } });
       return overview;
+    }),
+  }),
+  automationOps: router({
+    dashboard: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      await db.seedDefaultAutomationRules(defaultAutomationRules);
+      const result = await db.getAutomationOperationsDashboard();
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "automation.dashboard_view", resourceType: "automation_dashboard" });
+      return result;
+    }),
+    setRuleEnabled: protectedProcedure.input(z.object({ ruleId: z.string().uuid(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await db.setAutomationRuleEnabled(input.ruleId, input.enabled);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "automation.rule_toggled", resourceType: "automation_rule", resourceId: input.ruleId, metadata: { enabled: input.enabled } });
+      return result;
     }),
   }),
 });

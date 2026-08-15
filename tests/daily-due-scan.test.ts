@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDailyDueNotification, getSaudiDayWindow } from "../server/daily-due-scan";
+import { getDailyDueNotification, getSaudiDayWindow, shouldPromptInactiveDraft } from "../server/daily-due-scan";
 
 describe("daily due-date scan", () => {
   const now = new Date("2026-08-15T07:00:00.000Z");
@@ -17,5 +17,13 @@ describe("daily due-date scan", () => {
     expect(overdue.data.urgency).toBe("overdue");
     expect(dueToday.title).toContain("اليوم");
     expect(dueToday.data.urgency).toBe("today");
+  });
+});
+
+describe("inactive draft timing", () => {
+  it("waits at least 72 hours before prompting a user to resume", () => {
+    const now = new Date("2026-08-15T12:00:00.000Z");
+    expect(shouldPromptInactiveDraft(new Date("2026-08-12T12:00:00.000Z"), now)).toBe(true);
+    expect(shouldPromptInactiveDraft(new Date("2026-08-12T12:01:00.000Z"), now)).toBe(false);
   });
 });

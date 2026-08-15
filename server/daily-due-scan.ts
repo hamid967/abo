@@ -24,6 +24,32 @@ export function getDailyDueNotification(candidate: db.DailyDueCandidate, now = n
   };
 }
 
+export function shouldPromptInactiveDraft(lastActivityAt: Date, now = new Date()) {
+  return now.getTime() - lastActivityAt.getTime() >= 72 * 60 * 60 * 1000;
+}
+
+export async function runInactiveDraftScan(now = new Date()) {
+  const window = getSaudiDayWindow(now);
+  const candidates = await db.listInactiveDraftCandidates(new Date(now.getTime() - 72 * 60 * 60 * 1000));
+  let created = 0;
+  let skipped = 0;
+  for (const candidate of candidates) {
+    if (!shouldPromptInactiveDraft(candidate.lastActivityAt, now)) continue;
+    const key = { recipientUserId: candidate.recipientUserId, resourceType: "draft_inactive", resourceId: candidate.conversationId, notifiedForDate: window.key };
+    const reserved = await db.reserveDailyDueNotification(key);
+    if (!reserved) { skipped += 1; continue; }
+    try {
+      const notificationId = await db.createInAppNotification({ recipientUserId: candidate.recipientUserId, title: "لديك مسودة بانتظار الاستكمال", body: "يمكنك العودة إلى المساعد التنفيذي لاستكمال بيانات الطلب أو طلب تحويله لفريق المتابعة.", type: "draft_inactive", data: { conversationId: candidate.conversationId, source: "daily_due_scan" } });
+      await db.finalizeDailyDueNotification({ ...key, notificationId: Number(notificationId) });
+      created += 1;
+    } catch (error) {
+      await db.releaseDailyDueNotification(key);
+      throw error;
+    }
+  }
+  return { scanned: candidates.length, created, skipped };
+}
+
 export async function runDailyDueScan(now = new Date()) {
   const window = getSaudiDayWindow(now);
   const candidates = await db.listDailyDueCandidates(window.end);
@@ -43,7 +69,8 @@ export async function runDailyDueScan(now = new Date()) {
       throw error;
     }
   }
-  return { day: window.key, scanned: candidates.length, created, skipped };
+  const inactive = await runInactiveDraftScan(now);
+  return { day: window.key, scanned: candidates.length, created, skipped, inactive };
 }
 
 export async function handleDailyDueScan(req: Request, res: Response) {

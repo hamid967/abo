@@ -264,6 +264,146 @@ export const cloudRecords = mysqlTable("cloud_records", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [uniqueIndex("cloud_records_owner_type_unique").on(table.ownerUserId, table.recordType), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "cloud_records_owner_fk" }).onDelete("cascade")]);
 
+export const requestDrafts = mysqlTable("request_drafts", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  organizationId: int("organizationId"),
+  serviceId: int("serviceId"),
+  entityId: int("entityId"),
+  submittedRequestId: int("submittedRequestId"),
+  beneficiaryType: mysqlEnum("beneficiaryType", ["individual", "establishment", "company", "association", "nonprofit", "representative"]),
+  structuredData: json("structuredData").notNull(),
+  completionPercentage: int("completionPercentage").default(0).notNull(),
+  validationStatus: mysqlEnum("validationStatus", ["pending", "errors", "warnings", "passed"]).default("pending").notNull(),
+  status: mysqlEnum("status", ["draft", "reviewing", "awaiting_confirmation", "submitting", "submitted", "needs_human_review", "cancelled", "expired"]).default("draft").notNull(),
+  summaryVersion: int("summaryVersion").default(0).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 96 }).notNull(),
+  expiresAt: timestamp("expiresAt"),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("request_drafts_owner_idempotency_unique").on(table.ownerUserId, table.idempotencyKey), index("request_drafts_owner_status_idx").on(table.ownerUserId, table.status, table.updatedAt), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "request_drafts_owner_fk" }).onDelete("cascade"), foreignKey({ columns: [table.organizationId], foreignColumns: [organizations.id], name: "request_drafts_organization_fk" }).onDelete("set null"), foreignKey({ columns: [table.serviceId], foreignColumns: [governmentServices.id], name: "request_drafts_service_fk" }).onDelete("set null"), foreignKey({ columns: [table.entityId], foreignColumns: [governmentEntities.id], name: "request_drafts_entity_fk" }).onDelete("set null"), foreignKey({ columns: [table.submittedRequestId], foreignColumns: [serviceRequests.id], name: "request_drafts_submitted_request_fk" }).onDelete("set null")]);
+
+export const aiConversations = mysqlTable("ai_conversations", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  draftId: varchar("draftId", { length: 36 }),
+  status: mysqlEnum("status", ["active", "paused", "submitted", "needs_human_review", "cancelled", "expired"]).default("active").notNull(),
+  currentState: mysqlEnum("currentState", ["started", "identifying_intent", "selecting_beneficiary", "selecting_service", "selecting_entity", "collecting_information", "collecting_documents", "validating_information", "reviewing_summary", "awaiting_confirmation", "submitting", "submitted", "needs_human_review", "cancelled", "expired"]).default("started").notNull(),
+  detectedIntent: varchar("detectedIntent", { length: 64 }),
+  language: mysqlEnum("language", ["ar", "en"]).default("ar").notNull(),
+  lastActivityAt: timestamp("lastActivityAt").defaultNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("ai_conversations_owner_activity_idx").on(table.ownerUserId, table.lastActivityAt), index("ai_conversations_draft_idx").on(table.draftId), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "ai_conversations_owner_fk" }).onDelete("cascade"), foreignKey({ columns: [table.draftId], foreignColumns: [requestDrafts.id], name: "ai_conversations_draft_fk" }).onDelete("set null")]);
+
+export const aiMessages = mysqlTable("ai_messages", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  conversationId: varchar("conversationId", { length: 36 }).notNull(),
+  role: mysqlEnum("role", ["user", "assistant", "tool"]).notNull(),
+  content: text("content").notNull(),
+  toolName: varchar("toolName", { length: 120 }),
+  toolCallId: varchar("toolCallId", { length: 96 }),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("ai_messages_conversation_created_idx").on(table.conversationId, table.createdAt), foreignKey({ columns: [table.conversationId], foreignColumns: [aiConversations.id], name: "ai_messages_conversation_fk" }).onDelete("cascade")]);
+
+export const requestDraftDocuments = mysqlTable("request_draft_documents", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  draftId: varchar("draftId", { length: 36 }).notNull(),
+  documentId: int("documentId").notNull(),
+  requirementKey: varchar("requirementKey", { length: 120 }),
+  classificationStatus: mysqlEnum("classificationStatus", ["pending", "confirmed", "unclear", "rejected"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("request_draft_documents_unique").on(table.draftId, table.documentId), index("request_draft_documents_document_idx").on(table.documentId), foreignKey({ columns: [table.draftId], foreignColumns: [requestDrafts.id], name: "request_draft_documents_draft_fk" }).onDelete("cascade"), foreignKey({ columns: [table.documentId], foreignColumns: [documents.id], name: "request_draft_documents_document_fk" }).onDelete("cascade")]);
+
+export const userConsents = mysqlTable("user_consents", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  draftId: varchar("draftId", { length: 36 }).notNull(),
+  consentType: mysqlEnum("consentType", ["terms", "privacy", "request_submission"]).notNull(),
+  policyVersion: varchar("policyVersion", { length: 64 }).notNull(),
+  summaryVersion: int("summaryVersion").notNull(),
+  consentTextHash: varchar("consentTextHash", { length: 128 }).notNull(),
+  grantedAt: timestamp("grantedAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+}, (table) => [index("user_consents_owner_draft_idx").on(table.ownerUserId, table.draftId, table.consentType), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "user_consents_owner_fk" }).onDelete("cascade"), foreignKey({ columns: [table.draftId], foreignColumns: [requestDrafts.id], name: "user_consents_draft_fk" }).onDelete("cascade")]);
+
+export const handoffRequests = mysqlTable("handoff_requests", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  conversationId: varchar("conversationId", { length: 36 }).notNull(),
+  draftId: varchar("draftId", { length: 36 }),
+  ticketId: int("ticketId"),
+  assignedToUserId: int("assignedToUserId"),
+  reason: varchar("reason", { length: 255 }).notNull(),
+  priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
+  status: mysqlEnum("status", ["pending", "assigned", "resolved", "cancelled"]).default("pending").notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("handoff_requests_owner_status_idx").on(table.ownerUserId, table.status), index("handoff_requests_assignee_status_idx").on(table.assignedToUserId, table.status), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "handoff_requests_owner_fk" }).onDelete("cascade"), foreignKey({ columns: [table.conversationId], foreignColumns: [aiConversations.id], name: "handoff_requests_conversation_fk" }).onDelete("cascade"), foreignKey({ columns: [table.draftId], foreignColumns: [requestDrafts.id], name: "handoff_requests_draft_fk" }).onDelete("set null"), foreignKey({ columns: [table.ticketId], foreignColumns: [supportTickets.id], name: "handoff_requests_ticket_fk" }).onDelete("set null"), foreignKey({ columns: [table.assignedToUserId], foreignColumns: [users.id], name: "handoff_requests_assignee_fk" }).onDelete("set null")]);
+
+export const automationEvents = mysqlTable("automation_events", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  eventName: varchar("eventName", { length: 96 }).notNull(),
+  aggregateType: varchar("aggregateType", { length: 64 }).notNull(),
+  aggregateId: varchar("aggregateId", { length: 96 }).notNull(),
+  ownerUserId: int("ownerUserId"),
+  payload: json("payload").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("automation_events_idempotency_unique").on(table.idempotencyKey), index("automation_events_name_occurred_idx").on(table.eventName, table.occurredAt), index("automation_events_owner_occurred_idx").on(table.ownerUserId, table.occurredAt), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "automation_events_owner_fk" }).onDelete("set null")]);
+
+export const automationRules = mysqlTable("automation_rules", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  key: varchar("key", { length: 96 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  triggerEvent: varchar("triggerEvent", { length: 96 }).notNull(),
+  conditions: json("conditions").notNull(),
+  actions: json("actions").notNull(),
+  priority: int("priority").default(100).notNull(),
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("automation_rules_key_unique").on(table.key), index("automation_rules_trigger_enabled_idx").on(table.triggerEvent, table.enabled, table.priority), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "automation_rules_creator_fk" }).onDelete("set null")]);
+
+export const automationRuns = mysqlTable("automation_runs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  ruleId: varchar("ruleId", { length: 36 }).notNull(),
+  eventId: varchar("eventId", { length: 36 }).notNull(),
+  status: mysqlEnum("status", ["pending", "running", "succeeded", "failed", "skipped"]).default("pending").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  result: json("result"),
+  errorCode: varchar("errorCode", { length: 96 }),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("automation_runs_idempotency_unique").on(table.idempotencyKey), index("automation_runs_rule_status_idx").on(table.ruleId, table.status, table.createdAt), index("automation_runs_event_idx").on(table.eventId), foreignKey({ columns: [table.ruleId], foreignColumns: [automationRules.id], name: "automation_runs_rule_fk" }).onDelete("cascade"), foreignKey({ columns: [table.eventId], foreignColumns: [automationEvents.id], name: "automation_runs_event_fk" }).onDelete("cascade")]);
+
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  userId: int("userId").primaryKey(),
+  inAppEnabled: boolean("inAppEnabled").default(true).notNull(),
+  digestFrequency: mysqlEnum("digestFrequency", ["immediate", "daily"]).default("immediate").notNull(),
+  quietHoursEnabled: boolean("quietHoursEnabled").default(false).notNull(),
+  quietStartHour: int("quietStartHour"),
+  quietEndHour: int("quietEndHour"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: "notification_preferences_user_fk" }).onDelete("cascade")]);
+
+export const notificationDeliveryLogs = mysqlTable("notification_delivery_logs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  notificationId: int("notificationId").notNull(),
+  channel: mysqlEnum("channel", ["in_app"]).default("in_app").notNull(),
+  status: mysqlEnum("status", ["queued", "delivered", "suppressed", "failed"]).default("queued").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
+  details: json("details"),
+  deliveredAt: timestamp("deliveredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("notification_delivery_logs_idempotency_unique").on(table.idempotencyKey), index("notification_delivery_logs_notification_idx").on(table.notificationId, table.createdAt), foreignKey({ columns: [table.notificationId], foreignColumns: [notifications.id], name: "notification_delivery_logs_notification_fk" }).onDelete("cascade")]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

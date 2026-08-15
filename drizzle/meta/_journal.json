@@ -50,6 +50,27 @@
       "when": 1786803896875,
       "tag": "0006_cuddly_terrax",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1786804429574,
+      "tag": "0007_early_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1786805676161,
+      "tag": "0008_careless_the_captain",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1786806217826,
+      "tag": "0009_lucky_scorpion",
+      "breakpoints": true
     }
   ]
 }

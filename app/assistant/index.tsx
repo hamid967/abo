@@ -70,8 +70,7 @@ export default function AssistantScreen() {
   };
 
   const handleSuggestion = (suggestion: AssistantSuggestion) => {
-    if (suggestion.action === "request") { router.push("/request/new" as never); return; }
-    if (suggestion.action === "intake") { router.push("/assistant/request-intake" as never); return; }
+    if (suggestion.action === "request" || suggestion.action === "intake") { router.push("/assistant/request-intake" as never); return; }
     if (suggestion.action === "support") { router.push("/inquiries" as never); return; }
     void send(suggestion.label);
   };
