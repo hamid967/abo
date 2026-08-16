@@ -31,4 +31,15 @@ describe("calculateSlaWeeklyTrend", () => {
     expect(result.direction).toBe("up");
     expect(result.delta).toBeGreaterThan(0);
   });
+
+  it("compares the current seven-day period against the preceding seven days", () => {
+    const result = calculateSlaWeeklyTrend([
+      { status: "completed", createdAt: "2026-08-01T08:00:00.000Z", completedAt: "2026-08-05T10:00:00.000Z" },
+      { status: "completed", createdAt: "2026-08-01T08:00:00.000Z", completedAt: "2026-08-06T10:00:00.000Z" },
+      { status: "in_progress", createdAt: "2026-08-02T08:00:00.000Z" },
+      { status: "completed", createdAt: "2026-08-12T08:00:00.000Z", completedAt: "2026-08-15T10:00:00.000Z" },
+      { status: "in_progress", createdAt: "2026-08-12T08:00:00.000Z" },
+    ], now);
+    expect(result).toMatchObject({ weeklyRate: 33, previousWeekRate: 67, completedTotal: 1, previousCompletedTotal: 2, weekComparisonDirection: "down", weekComparisonDelta: 34, completedDelta: -1 });
+  });
 });
