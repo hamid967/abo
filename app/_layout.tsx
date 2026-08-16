@@ -130,6 +130,7 @@ export default function RootLayout() {
                 <Stack.Screen name="transaction/form" />
                 <Stack.Screen name="transaction/[id]" />
                 <Stack.Screen name="workspace/index" />
+                <Stack.Screen name="task-tracking/index" />
                 <Stack.Screen name="operations/index" />
                 <Stack.Screen name="inquiries/index" />
                 <Stack.Screen name="notifications/index" />

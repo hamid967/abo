@@ -46,4 +46,10 @@ describe("mobile platform compatibility", () => {
     expect(api).not.toContain("sessionToken.substring");
     expect(api).not.toContain('console.error("[API] getMe failed:"');
   });
+
+  it("renders SLA badges for task list and Kanban tracking", () => {
+    const workspace = readFileSync("app/workspace/index.tsx", "utf8");
+    expect(workspace).toContain("SlaBadge");
+    expect(workspace).toContain("dueAt={task.dueDate}");
+  });
 });

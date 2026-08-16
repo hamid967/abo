@@ -1101,3 +1101,28 @@ export async function createAutomatedTask(input: { ownerUserId: number; transact
   const result = await db.insert(tasks).values({ transactionId: input.transactionId, ownerUserId: input.ownerUserId, title: input.title, priority: input.priority, status: "new", description: `Automation rule: ${input.ruleKey}` });
   return { id: Number(result[0].insertId) };
 }
+
+export async function listTaskTrackingForUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select({
+    id: tasks.id,
+    title: tasks.title,
+    description: tasks.description,
+    status: tasks.status,
+    priority: tasks.priority,
+    dueAt: tasks.dueAt,
+    slaDueAt: tasks.slaDueAt,
+    slaMinutes: tasks.slaMinutes,
+    assignmentSource: tasks.assignmentSource,
+    transactionId: tasks.transactionId,
+    transactionReference: transactions.referenceNumber,
+  }).from(tasks).leftJoin(transactions, eq(tasks.transactionId, transactions.id)).where(or(eq(tasks.ownerUserId, userId), eq(tasks.assigneeUserId, userId))).orderBy(asc(tasks.slaDueAt), desc(tasks.createdAt));
+}
+
+export async function updateTrackedTaskStatus(input: { userId: number; taskId: number; status: "new" | "in_progress" | "awaiting_customer" | "awaiting_external" | "completed" | "cancelled" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.update(tasks).set({ status: input.status, completedAt: input.status === "completed" ? new Date() : null }).where(and(eq(tasks.id, input.taskId), or(eq(tasks.ownerUserId, input.userId), eq(tasks.assigneeUserId, input.userId))));
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+}

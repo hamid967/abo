@@ -238,6 +238,15 @@ export const appRouter = router({
       }
     }),
   }),
+  taskTracking: router({
+    list: protectedProcedure.query(({ ctx }) => db.listTaskTrackingForUser(ctx.user.id)),
+    updateStatus: protectedProcedure.input(z.object({ taskId: z.number().int().positive(), status: z.enum(["new", "in_progress", "awaiting_customer", "awaiting_external", "completed", "cancelled"]) })).mutation(async ({ ctx, input }) => {
+      const updated = await db.updateTrackedTaskStatus({ userId: ctx.user.id, ...input });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "task.status_updated", resourceType: "task", resourceId: input.taskId, metadata: { status: input.status } });
+      return { success: true } as const;
+    }),
+  }),
   cloud: router({
     get: protectedProcedure.input(z.object({ recordType: cloudRecordTypeSchema })).query(async ({ ctx, input }) => {
       const record = await db.getCloudRecord(ctx.user.id, input.recordType);
