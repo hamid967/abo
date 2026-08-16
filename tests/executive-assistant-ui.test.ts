@@ -11,6 +11,16 @@ describe("executive assistant entry UI", () => {
     expect(screen).toContain("رمز التحقق");
   });
 
+  it("exposes review, consent, submission, documents, and conversation lifecycle controls", () => {
+    expect(screen).toContain("trpc.executiveAssistant.prepareReview.useMutation");
+    expect(screen).toContain("trpc.executiveAssistant.recordConsent.useMutation");
+    expect(screen).toContain("trpc.executiveAssistant.submitDraft.useMutation");
+    expect(screen).toContain("DocumentPicker.getDocumentAsync");
+    expect(screen).toContain("trpc.executiveAssistant.attachDocument.useMutation");
+    expect(screen).toContain("trpc.executiveAssistant.cancelDraft.useMutation");
+    expect(screen).toContain("trpc.executiveAssistant.deleteConversationData.useMutation");
+  });
+
   it("routes the main transaction entry to chat intake", () => {
     expect(transactions).toContain('router.push("/assistant/request-intake" as never)');
   });

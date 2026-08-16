@@ -616,6 +616,33 @@ export async function listActiveRequestDrafts(ownerUserId: number) {
   return db.select({ id: requestDrafts.id, status: requestDrafts.status, completionPercentage: requestDrafts.completionPercentage, structuredData: requestDrafts.structuredData, updatedAt: requestDrafts.updatedAt, conversationId: aiConversations.id }).from(requestDrafts).innerJoin(aiConversations, eq(aiConversations.draftId, requestDrafts.id)).where(and(eq(requestDrafts.ownerUserId, ownerUserId), eq(aiConversations.ownerUserId, ownerUserId), isNull(requestDrafts.deletedAt), notInArray(requestDrafts.status, ["submitted", "cancelled", "expired"]) as never)).orderBy(desc(requestDrafts.updatedAt)).limit(20);
 }
 
+export async function cancelRequestConversation(ownerUserId: number, conversationId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const session = await getRequestConversation(ownerUserId, conversationId);
+  if (!session?.conversation || !session.draft) throw new Error("CONVERSATION_NOT_FOUND");
+  if (session.draft.submittedRequestId || session.conversation.status === "submitted") throw new Error("SUBMITTED_REQUEST_CANNOT_BE_CANCELLED_HERE");
+  if (session.conversation.status === "cancelled") return { success: true, alreadyCancelled: true } as const;
+  await db.transaction(async (tx) => {
+    await tx.update(requestDrafts).set({ status: "cancelled" }).where(and(eq(requestDrafts.id, session.draft!.id), eq(requestDrafts.ownerUserId, ownerUserId)));
+    await tx.update(aiConversations).set({ status: "cancelled", currentState: "cancelled", lastActivityAt: new Date() }).where(and(eq(aiConversations.id, conversationId), eq(aiConversations.ownerUserId, ownerUserId)));
+  });
+  return { success: true, alreadyCancelled: false } as const;
+}
+
+export async function deleteAssistantConversationContent(ownerUserId: number, conversationId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const session = await getRequestConversation(ownerUserId, conversationId);
+  if (!session?.conversation) throw new Error("CONVERSATION_NOT_FOUND");
+  await db.transaction(async (tx) => {
+    await tx.delete(aiMessages).where(eq(aiMessages.conversationId, conversationId));
+    if (session.draft && !session.draft.submittedRequestId) await tx.update(requestDrafts).set({ status: "cancelled", deletedAt: new Date() }).where(and(eq(requestDrafts.id, session.draft.id), eq(requestDrafts.ownerUserId, ownerUserId)));
+    if (session.conversation.status !== "submitted") await tx.update(aiConversations).set({ status: "cancelled", currentState: "cancelled", lastActivityAt: new Date() }).where(and(eq(aiConversations.id, conversationId), eq(aiConversations.ownerUserId, ownerUserId)));
+  });
+  return { success: true, submittedRequestPreserved: Boolean(session.draft?.submittedRequestId) } as const;
+}
+
 export async function validateRequestDraft(ownerUserId: number, conversationId: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -638,10 +665,15 @@ export async function moveConversationState(ownerUserId: number, conversationId:
 export async function prepareDraftReview(ownerUserId: number, conversationId: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const beforeValidation = await getRequestConversation(ownerUserId, conversationId);
+  if (!beforeValidation?.conversation || !beforeValidation.draft || beforeValidation.draft.deletedAt) throw new Error("DRAFT_NOT_FOUND");
+  if (beforeValidation.conversation.currentState === "awaiting_confirmation") return beforeValidation;
+  const reviewableStates = ["identifying_intent", "selecting_beneficiary", "selecting_service", "selecting_entity", "collecting_information", "collecting_documents", "validating_information", "reviewing_summary"];
+  if (!reviewableStates.includes(beforeValidation.conversation.currentState)) throw new Error("REVIEW_STATE_REQUIRED");
   const validation = await validateRequestDraft(ownerUserId, conversationId);
   if (validation.validationStatus === "errors") throw new Error("DRAFT_VALIDATION_FAILED");
   const session = await getRequestConversation(ownerUserId, conversationId);
-  if (!session?.conversation || !session.draft || session.conversation.currentState !== "reviewing_summary") throw new Error("REVIEW_STATE_REQUIRED");
+  if (!session?.conversation || !session.draft) throw new Error("DRAFT_NOT_FOUND");
   await db.transaction(async (tx) => {
     await tx.update(requestDrafts).set({ status: "awaiting_confirmation" }).where(and(eq(requestDrafts.id, session.draft!.id), eq(requestDrafts.ownerUserId, ownerUserId)));
     await tx.update(aiConversations).set({ currentState: "awaiting_confirmation", status: "active", lastActivityAt: new Date() }).where(and(eq(aiConversations.id, conversationId), eq(aiConversations.ownerUserId, ownerUserId)));
@@ -851,6 +883,13 @@ export async function setAutomationRuleEnabled(ruleId: string, enabled: boolean)
   if (!db) throw new Error("Database not available");
   await db.update(automationRules).set({ enabled }).where(eq(automationRules.id, ruleId));
   return { success: true } as const;
+}
+
+export async function getAutomationRuleById(ruleId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(automationRules).where(eq(automationRules.id, ruleId)).limit(1);
+  return rows[0];
 }
 
 export async function createAutomatedTask(input: { ownerUserId: number; transactionId: number; title: string; priority: "low" | "normal" | "high" | "urgent"; ruleKey: string }) {

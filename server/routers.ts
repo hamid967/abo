@@ -11,7 +11,7 @@ import { detectRequestIntent, draftPatchFromDetection } from "./intent-detection
 import { requestDraftPatchSchema } from "./request-draft-policy";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
 import { storagePut } from "./storage";
-import { emitAndProcessAutomationEvent } from "./automation-engine";
+import { emitAndProcessAutomationEvent, previewAutomationRule } from "./automation-engine";
 import { defaultAutomationRules } from "./default-automation-rules";
 import { validateQuietHours } from "./notification-preferences-policy";
 import { checkAssistantRateLimit } from "./assistant-rate-limit";
@@ -190,6 +190,16 @@ export const appRouter = router({
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_document_removed", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { documentId: input.documentId } });
       return result;
     }),
+    cancelDraft: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const result = await db.cancelRequestConversation(ctx.user.id, input.conversationId);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_cancelled", resourceType: "ai_conversation", resourceId: input.conversationId });
+      return result;
+    }),
+    deleteConversationData: protectedProcedure.input(z.object({ conversationId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const result = await db.deleteAssistantConversationContent(ctx.user.id, input.conversationId);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.conversation_content_deleted", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { submittedRequestPreserved: result.submittedRequestPreserved } });
+      return result;
+    }),
     requestHumanHandoff: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), reason: z.string().trim().min(3).max(255), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
       const result = await db.requestHumanHandoff({ ownerUserId: ctx.user.id, ...input });
       if (!result.reused) await emitAndProcessAutomationEvent({ eventName: "conversation.handoff_requested", aggregateType: "ai_conversation", aggregateId: input.conversationId, ownerUserId: ctx.user.id, payload: { handoffId: result.handoffId, ticketId: result.ticketId, automationOrigin: false }, idempotencyKey: `handoff-requested:${result.handoffId}` });
@@ -360,6 +370,17 @@ export const appRouter = router({
       const result = await db.setAutomationRuleEnabled(input.ruleId, input.enabled);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "automation.rule_toggled", resourceType: "automation_rule", resourceId: input.ruleId, metadata: { enabled: input.enabled } });
       return result;
+    }),
+    previewRule: protectedProcedure.input(z.object({
+      ruleId: z.string().uuid(),
+      payload: z.record(z.string().trim().min(1).max(80), z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()])).refine((value) => Object.keys(value).length <= 20, "Too many preview fields"),
+    })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const rule = await db.getAutomationRuleById(input.ruleId);
+      if (!rule) throw new TRPCError({ code: "NOT_FOUND" });
+      const preview = previewAutomationRule(rule, input.payload);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "automation.rule_previewed", resourceType: "automation_rule", resourceId: input.ruleId, metadata: { matched: preview.matched, payloadKeys: Object.keys(input.payload) } });
+      return preview;
     }),
   }),
 });

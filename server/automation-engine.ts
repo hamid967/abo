@@ -4,7 +4,7 @@ import { defaultAutomationRules } from "./default-automation-rules";
 export const automationEventNames = ["request.created", "draft.document_attached", "conversation.handoff_requested", "transaction.status_changed", "appointment.created", "daily_due_scan.completed"] as const;
 export type AutomationEventName = (typeof automationEventNames)[number];
 
-type AutomationRule = { id: string; key: string; triggerEvent: string; conditions: unknown; actions: unknown; priority: number };
+export type AutomationRule = { id: string; key: string; triggerEvent: string; conditions: unknown; actions: unknown; priority: number };
 
 export function automationRunKey(ruleId: string, eventId: string) {
   return `rule:${ruleId}:event:${eventId}`;
@@ -21,6 +21,16 @@ export function matchesRuleConditions(conditions: unknown, payload: Record<strin
   const equals = (conditions as Record<string, unknown>).equals;
   if (!equals || typeof equals !== "object") return true;
   return Object.entries(equals as Record<string, unknown>).every(([key, value]) => payload[key] === value);
+}
+
+export function previewAutomationRule(rule: AutomationRule, payload: Record<string, unknown>) {
+  const matched = matchesRuleConditions(rule.conditions, payload);
+  const actions = Array.isArray(rule.actions) ? rule.actions : [];
+  const actionPlan = actions.slice(0, 12).map((action, index) => {
+    const definition = action && typeof action === "object" ? action as Record<string, unknown> : {};
+    return { order: index + 1, type: String(definition.type ?? "unknown"), wouldRun: matched };
+  });
+  return { matched, triggerEvent: rule.triggerEvent, actionPlan, sideEffectsExecuted: false as const };
 }
 
 export async function emitAndProcessAutomationEvent(input: { eventName: AutomationEventName; aggregateType: string; aggregateId: string; ownerUserId?: number; payload: Record<string, unknown>; idempotencyKey: string }) {
