@@ -141,6 +141,8 @@ export default function RootLayout() {
                 <Stack.Screen name="admin/chats" />
                 <Stack.Screen name="document-summary/index" />
                 <Stack.Screen name="security/activity" />
+                <Stack.Screen name="today/index" />
+                <Stack.Screen name="documents/index" />
                 <Stack.Screen name="reports/index" />
                 <Stack.Screen name="account/index" />
                 <Stack.Screen name="oauth/callback" />

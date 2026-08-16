@@ -79,6 +79,9 @@ export default function HomeScreen() {
               <View style={styles.workspaceCopy}><Text style={styles.workspaceTitle}>مساحة العمل</Text><Text style={styles.workspaceText}>مهامك ومواعيدك ومستنداتك في مكان واحد.</Text></View>
               <Ionicons name="chevron-back" size={19} color="#0B5D45" />
             </Pressable>
+            <Pressable onPress={() => router.push("/today" as never)} style={({ pressed }) => [styles.todayButton, pressed && styles.addButtonPressed]}>
+              <Ionicons name="today-outline" size={20} color="#0B5D45" /><Text style={styles.assistantText}>يومي مع أبو مشعل: اعرف وش يحتاج انتباهك الآن</Text><Ionicons name="chevron-back" size={19} color="#0B5D45" />
+            </Pressable>
             <Pressable onPress={() => router.push("/inquiries" as never)} style={({ pressed }) => [styles.assistantButton, pressed && styles.addButtonPressed]}>
               <Ionicons name="sparkles-outline" size={20} color="#0B5D45" /><Text style={styles.assistantText}>اسأل أبو مشعل عن طلبك أو الإجراء التالي</Text><Ionicons name="chevron-back" size={19} color="#0B5D45" />
             </Pressable>
@@ -139,6 +142,7 @@ const styles = StyleSheet.create({
   workspaceCopy: { alignItems: "flex-end", flex: 1 },
   workspaceTitle: { color: "#17382F", fontSize: 14, fontWeight: "800", writingDirection: "rtl" },
   workspaceText: { color: "#66756E", fontSize: 12, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
+  todayButton: { alignItems: "center", backgroundColor: "#FFF8EF", borderColor: "#F7D9AB", borderRadius: 16, borderWidth: 1, flexDirection: "row-reverse", gap: 10, marginBottom: 12, padding: 13 },
   assistantButton: { alignItems: "center", backgroundColor: "#F1F8F3", borderColor: "#D7E9DB", borderRadius: 16, borderWidth: 1, flexDirection: "row-reverse", gap: 10, marginBottom: 24, padding: 13 },
   assistantText: { color: "#315548", flex: 1, fontSize: 13, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },
   sectionTitleRow: { alignItems: "center", flexDirection: "row-reverse", justifyContent: "space-between", marginBottom: 12 },

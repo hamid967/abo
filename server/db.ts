@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -176,6 +176,25 @@ export async function createServiceRequest(input: Omit<InsertServiceRequest, "re
   const requestNumber = `AM-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   const result = await db.insert(serviceRequests).values({ ...input, requestNumber });
   return { id: result[0].insertId, requestNumber };
+}
+
+export async function canUseOrganization(userId: number, organizationId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const owned = await db.select({ id: organizations.id }).from(organizations).where(and(
+    eq(organizations.id, organizationId),
+    eq(organizations.ownerUserId, userId),
+    isNull(organizations.deletedAt),
+  )).limit(1);
+  if (owned.length) return true;
+  const membership = await db.select({ id: organizationMembers.id }).from(organizationMembers)
+    .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+    .where(and(
+      eq(organizationMembers.organizationId, organizationId),
+      eq(organizationMembers.userId, userId),
+      isNull(organizations.deletedAt),
+    )).limit(1);
+  return membership.length > 0;
 }
 
 export type DailyDueCandidate = {
@@ -560,6 +579,29 @@ export async function createUploadedDocument(input: { ownerUserId: number; fileN
   if (!db) throw new Error("Database not available");
   const result = await db.insert(documents).values({ ...input, verificationStatus: "pending" });
   return result[0].insertId;
+}
+
+export async function listOwnedDocuments(ownerUserId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: documents.id, fileName: documents.fileName, mimeType: documents.mimeType, fileSizeBytes: documents.fileSizeBytes, documentType: documents.documentType, verificationStatus: documents.verificationStatus, expiresAt: documents.expiresAt, requestId: documents.requestId, transactionId: documents.transactionId, createdAt: documents.createdAt }).from(documents).where(and(eq(documents.ownerUserId, ownerUserId), isNull(documents.deletedAt))).orderBy(desc(documents.createdAt));
+}
+
+export async function getOwnedDocumentForAccess(ownerUserId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ id: documents.id, storageKey: documents.storageKey, requestId: documents.requestId, transactionId: documents.transactionId, fileName: documents.fileName }).from(documents).where(and(eq(documents.id, documentId), eq(documents.ownerUserId, ownerUserId), isNull(documents.deletedAt))).limit(1);
+  return rows[0];
+}
+
+export async function softDeleteOwnedDocument(ownerUserId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const document = await getOwnedDocumentForAccess(ownerUserId, documentId);
+  if (!document) throw new Error("DOCUMENT_NOT_FOUND");
+  if (document.requestId || document.transactionId) throw new Error("DOCUMENT_LINKED_TO_RECORD");
+  await db.update(documents).set({ deletedAt: new Date() }).where(and(eq(documents.id, documentId), eq(documents.ownerUserId, ownerUserId), isNull(documents.deletedAt)));
+  return { success: true, fileName: document.fileName } as const;
 }
 
 export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"], search?: string) {

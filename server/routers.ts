@@ -10,7 +10,7 @@ import { answerGuidanceQuestion, guideRequestIntake, requestIntakeStageSchema } 
 import { detectRequestIntent, draftPatchFromDetection } from "./intent-detection";
 import { requestDraftPatchSchema } from "./request-draft-policy";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
-import { storagePut } from "./storage";
+import { storageGetSignedUrl, storagePut } from "./storage";
 import { emitAndProcessAutomationEvent, previewAutomationRule } from "./automation-engine";
 import { defaultAutomationRules } from "./default-automation-rules";
 import { validateQuietHours } from "./notification-preferences-policy";
@@ -50,7 +50,12 @@ export const appRouter = router({
       organizationId: z.number().int().positive().optional(),
       serviceId: z.number().int().positive().optional(),
       desiredDueAt: z.date().optional(),
-    })).mutation(({ ctx, input }) => db.createServiceRequest({ ...input, customerUserId: ctx.user.id })),
+    })).mutation(async ({ ctx, input }) => {
+      if (input.organizationId && !await db.canUseOrganization(ctx.user.id, input.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ORGANIZATION_ACCESS_DENIED" });
+      }
+      return db.createServiceRequest({ ...input, customerUserId: ctx.user.id });
+    }),
   }),
   transactions: router({
     list: protectedProcedure.query(({ ctx }) => db.listTransactions(ctx.user.id, ctx.user.role)),
@@ -140,6 +145,9 @@ export const appRouter = router({
     }),
     listDrafts: protectedProcedure.query(({ ctx }) => db.listActiveRequestDrafts(ctx.user.id)),
     updateDraft: protectedProcedure.input(z.object({ conversationId: z.string().uuid(), patch: requestDraftPatchSchema })).mutation(async ({ ctx, input }) => {
+      if (input.patch.organizationId && !await db.canUseOrganization(ctx.user.id, input.patch.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ORGANIZATION_ACCESS_DENIED" });
+      }
       const session = await db.updateRequestDraftFields({ ownerUserId: ctx.user.id, conversationId: input.conversationId, patch: input.patch });
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.draft_updated", resourceType: "request_draft", resourceId: session?.draft?.id, metadata: { fields: Object.keys(input.patch) } });
       return session;
@@ -241,6 +249,7 @@ export const appRouter = router({
     }),
   }),
   documents: router({
+    list: protectedProcedure.query(({ ctx }) => db.listOwnedDocuments(ctx.user.id)),
     upload: protectedProcedure.input(z.object({
       fileName: z.string().trim().min(1).max(180),
       mimeType: z.enum(supportedDocumentMimeTypes),
@@ -252,7 +261,26 @@ export const appRouter = router({
       const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
       const { key, url } = await storagePut(`abu-mishal/${ctx.user.id}/documents/${Date.now()}-${safeName}`, bytes, input.mimeType);
       const id = await db.createUploadedDocument({ ownerUserId: ctx.user.id, fileName: input.fileName, storageKey: key, mimeType: input.mimeType, fileSizeBytes: bytes.length });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "document.uploaded", resourceType: "document", resourceId: id, metadata: { mimeType: input.mimeType, fileSizeBytes: bytes.length } });
       return { id, key, url, fileSizeBytes: bytes.length };
+    }),
+    downloadUrl: protectedProcedure.input(z.object({ documentId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const document = await db.getOwnedDocumentForAccess(ctx.user.id, input.documentId);
+      if (!document) throw new TRPCError({ code: "NOT_FOUND" });
+      const url = await storageGetSignedUrl(document.storageKey);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "document.download_link_requested", resourceType: "document", resourceId: input.documentId });
+      return { url, fileName: document.fileName };
+    }),
+    delete: protectedProcedure.input(z.object({ documentId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.softDeleteOwnedDocument(ctx.user.id, input.documentId);
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "document.soft_deleted", resourceType: "document", resourceId: input.documentId });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "DOCUMENT_DELETE_FAILED";
+        if (["DOCUMENT_NOT_FOUND", "DOCUMENT_LINKED_TO_RECORD"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
     }),
   }),
   tickets: router({
