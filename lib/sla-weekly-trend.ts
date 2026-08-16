@@ -4,6 +4,8 @@ export type SlaWeeklyTrendTask = {
   completedAt?: Date | string | null;
 };
 
+export type SlaTrendPeriodDays = 7 | 30;
+
 export type SlaWeeklyTrendPoint = {
   key: string;
   label: string;
@@ -19,6 +21,7 @@ type WeeklyPeriodSummary = {
 };
 
 export type SlaWeeklyTrend = {
+  periodDays: SlaTrendPeriodDays;
   points: SlaWeeklyTrendPoint[];
   weeklyRate: number;
   completedTotal: number;
@@ -71,12 +74,12 @@ function calculatePeriod(tasks: ReadonlyArray<SlaWeeklyTrendTask>, start: Date, 
  * The daily rate is completed tasks divided by tasks available by that day's end.
  * This avoids implying historical SLA status that has not been stored.
  */
-export function calculateSlaWeeklyTrend(tasks: ReadonlyArray<SlaWeeklyTrendTask>, now = new Date()): SlaWeeklyTrend {
+export function calculateSlaWeeklyTrend(tasks: ReadonlyArray<SlaWeeklyTrendTask>, now = new Date(), periodDays: SlaTrendPeriodDays = 7): SlaWeeklyTrend {
   const today = dayStart(now);
-  const formatter = new Intl.DateTimeFormat("ar-SA", { weekday: "narrow" });
-  const points = Array.from({ length: 7 }, (_, index) => {
+  const formatter = new Intl.DateTimeFormat("ar-SA", periodDays === 30 ? { day: "numeric", month: "short" } : { weekday: "narrow" });
+  const points = Array.from({ length: periodDays }, (_, index) => {
     const day = new Date(today);
-    day.setDate(today.getDate() - (6 - index));
+    day.setDate(today.getDate() - (periodDays - 1 - index));
     const period = calculatePeriod(tasks, day, day);
     return { key: day.toISOString().slice(0, 10), label: formatter.format(day), ...period };
   });
@@ -85,7 +88,7 @@ export function calculateSlaWeeklyTrend(tasks: ReadonlyArray<SlaWeeklyTrendTask>
   const previousWeekEnd = new Date(weekStart);
   previousWeekEnd.setDate(previousWeekEnd.getDate() - 1);
   const previousWeekStart = new Date(previousWeekEnd);
-  previousWeekStart.setDate(previousWeekStart.getDate() - 6);
+  previousWeekStart.setDate(previousWeekStart.getDate() - (periodDays - 1));
   const previousWeek = calculatePeriod(tasks, previousWeekStart, previousWeekEnd);
   const completedTotal = currentWeek.completed;
   const comparable = points.filter((point) => point.available > 0);
@@ -93,5 +96,5 @@ export function calculateSlaWeeklyTrend(tasks: ReadonlyArray<SlaWeeklyTrendTask>
   const lastRate = comparable.at(-1)?.rate ?? 0;
   const delta = lastRate - firstRate;
   const weekDelta = currentWeek.rate - previousWeek.rate;
-  return { points, weeklyRate: currentWeek.rate, completedTotal, direction: delta > 0 ? "up" : delta < 0 ? "down" : "steady", delta: Math.abs(delta), previousWeekRate: previousWeek.rate, previousCompletedTotal: previousWeek.completed, previousAvailable: previousWeek.available, weekComparisonDirection: weekDelta > 0 ? "up" : weekDelta < 0 ? "down" : "steady", weekComparisonDelta: Math.abs(weekDelta), completedDelta: currentWeek.completed - previousWeek.completed };
+  return { periodDays, points, weeklyRate: currentWeek.rate, completedTotal, direction: delta > 0 ? "up" : delta < 0 ? "down" : "steady", delta: Math.abs(delta), previousWeekRate: previousWeek.rate, previousCompletedTotal: previousWeek.completed, previousAvailable: previousWeek.available, weekComparisonDirection: weekDelta > 0 ? "up" : weekDelta < 0 ? "down" : "steady", weekComparisonDelta: Math.abs(weekDelta), completedDelta: currentWeek.completed - previousWeek.completed };
 }

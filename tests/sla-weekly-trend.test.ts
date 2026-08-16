@@ -42,4 +42,14 @@ describe("calculateSlaWeeklyTrend", () => {
     ], now);
     expect(result).toMatchObject({ weeklyRate: 33, previousWeekRate: 67, completedTotal: 1, previousCompletedTotal: 2, weekComparisonDirection: "down", weekComparisonDelta: 34, completedDelta: -1 });
   });
+
+  it("supports a thirty-day comparison period with thirty daily data points", () => {
+    const result = calculateSlaWeeklyTrend([
+      { status: "completed", createdAt: "2026-07-01T08:00:00.000Z", completedAt: "2026-07-12T10:00:00.000Z" },
+      { status: "in_progress", createdAt: "2026-07-05T08:00:00.000Z" },
+      { status: "completed", createdAt: "2026-08-01T08:00:00.000Z", completedAt: "2026-08-10T10:00:00.000Z" },
+    ], now, 30);
+    expect(result).toMatchObject({ periodDays: 30, completedTotal: 1, previousCompletedTotal: 1 });
+    expect(result.points).toHaveLength(30);
+  });
 });
