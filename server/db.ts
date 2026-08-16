@@ -12,6 +12,7 @@ import { formatRequestNumber, submissionMessage } from "./request-submission";
 import { canAttachDraftDocument } from "./draft-document-policy";
 import { handoffPriorityForReason, handoffSubject } from "./handoff-policy";
 import { classifyLoginSecurity, formatLoginSecurityAlert, normalizeDeviceId } from "./login-security";
+import { dueAtForPlaybookStep, playbookTaskSourceKey, shouldGenerateTaskFromPlaybookStep } from "./playbook-task-policy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -910,6 +911,8 @@ export async function submitRequestDraft(ownerUserId: number, conversationId: st
         if (active) {
           const steps = await tx.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, stepOrder: playbookSteps.stepOrder, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
           await tx.insert(requestPlaybookAssignments).values({ id: crypto.randomUUID(), requestId, playbookId: active.playbookId, versionId: active.versionId, assignedByUserId: ownerUserId, snapshot: { playbookName: active.playbookName, versionNumber: active.versionNumber, versionTitle: active.versionTitle, requirements: active.requirements, exceptions: active.exceptions, steps } });
+          const generatedTasks = steps.filter(shouldGenerateTaskFromPlaybookStep).map((step) => ({ transactionId, ownerUserId, sourceType: "playbook_step" as const, sourceKey: playbookTaskSourceKey(active.versionId, step.stepKey), title: step.title, description: step.instructions ?? (language === "ar" ? `إجراء مولّد من Playbook ${active.playbookName} (الإصدار ${active.versionNumber}).` : `Task generated from ${active.playbookName} (version ${active.versionNumber}).`), priority, dueAt: dueAtForPlaybookStep(step) }));
+          if (generatedTasks.length) await tx.insert(tasks).values(generatedTasks).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
         }
       }
       const linkedDocuments = await tx.select({ documentId: requestDraftDocuments.documentId }).from(requestDraftDocuments).where(eq(requestDraftDocuments.draftId, draft.id));

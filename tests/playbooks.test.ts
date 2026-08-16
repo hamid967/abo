@@ -30,6 +30,14 @@ describe("service playbooks", () => {
     expect(db).toContain("versionNumber: active.versionNumber");
   });
 
+  it("generates only actionable step tasks with a source key protected by a unique database index", () => {
+    expect(schema).toContain('sourceType: mysqlEnum("sourceType", ["manual", "playbook_step", "automation"])');
+    expect(schema).toContain('uniqueIndex("tasks_playbook_step_unique")');
+    expect(db).toContain("shouldGenerateTaskFromPlaybookStep");
+    expect(db).toContain('sourceType: "playbook_step"');
+    expect(db).toContain("onDuplicateKeyUpdate");
+  });
+
   it("restricts management operations to the protected admin dashboard role", () => {
     expect(router).toContain("playbooks: router");
     expect(router).toContain("canViewSystemDashboard(ctx.user.role)");

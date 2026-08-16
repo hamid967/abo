@@ -196,6 +196,8 @@ export const tasks = mysqlTable("tasks", {
   transactionId: int("transactionId"),
   ownerUserId: int("ownerUserId").notNull(),
   assigneeUserId: int("assigneeUserId"),
+  sourceType: mysqlEnum("sourceType", ["manual", "playbook_step", "automation"]).default("manual").notNull(),
+  sourceKey: varchar("sourceKey", { length: 160 }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   status: mysqlEnum("status", ["new", "in_progress", "awaiting_customer", "awaiting_external", "completed", "overdue", "cancelled"]).default("new").notNull(),
@@ -204,7 +206,7 @@ export const tasks = mysqlTable("tasks", {
   completedAt: timestamp("completedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, (table) => [index("tasks_owner_idx").on(table.ownerUserId), index("tasks_transaction_idx").on(table.transactionId), index("tasks_status_idx").on(table.status), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "tasks_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "tasks_owner_fk" }).onDelete("restrict"), foreignKey({ columns: [table.assigneeUserId], foreignColumns: [users.id], name: "tasks_assignee_fk" }).onDelete("set null")]);
+}, (table) => [index("tasks_owner_idx").on(table.ownerUserId), index("tasks_transaction_idx").on(table.transactionId), index("tasks_status_idx").on(table.status), uniqueIndex("tasks_playbook_step_unique").on(table.transactionId, table.sourceType, table.sourceKey), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "tasks_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "tasks_owner_fk" }).onDelete("restrict"), foreignKey({ columns: [table.assigneeUserId], foreignColumns: [users.id], name: "tasks_assignee_fk" }).onDelete("set null")]);
 
 export const appointments = mysqlTable("appointments", {
   id: int("id").autoincrement().primaryKey(),
