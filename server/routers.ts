@@ -284,6 +284,7 @@ export const appRouter = router({
     }),
   }),
   playbooks: router({
+    activeForService: protectedProcedure.input(z.object({ serviceId: z.number().int().positive() })).query(async ({ input }) => db.getPublishedPlaybookForService(input.serviceId)),
     services: protectedProcedure.query(async ({ ctx }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
       return db.listActiveServicesForPlaybooks();

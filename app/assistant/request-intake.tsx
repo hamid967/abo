@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { PlaybookJourney } from "@/components/playbook-journey";
 import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { useAccount } from "@/hooks/use-account";
 import { useLocale } from "@/lib/locale-provider";
@@ -58,6 +59,8 @@ export default function RequestIntakeChatScreen() {
   const drafts = trpc.executiveAssistant.listDrafts.useQuery(undefined, { enabled: isAuthenticated });
   const detail = trpc.executiveAssistant.detail.useQuery({ conversationId: conversationId ?? "00000000-0000-4000-8000-000000000000" }, { enabled: Boolean(conversationId) });
   const draftDocuments = trpc.executiveAssistant.listDraftDocuments.useQuery({ conversationId: conversationId ?? "00000000-0000-4000-8000-000000000000" }, { enabled: Boolean(conversationId) });
+  const serviceId = detail.data?.draft?.serviceId;
+  const activePlaybook = trpc.playbooks.activeForService.useQuery({ serviceId: serviceId ?? 0 }, { enabled: Boolean(serviceId) });
   const state = detail.data?.conversation?.currentState;
   const completion = detail.data?.draft?.completionPercentage ?? drafts.data?.[0]?.completionPercentage ?? 0;
   const busy = start.isPending || send.isPending || updateDraft.isPending || validateDraft.isPending || prepareReview.isPending || recordConsent.isPending || submitDraft.isPending || uploadDocument.isPending || attachDocument.isPending || removeDocument.isPending || cancelDraft.isPending || deleteConversationData.isPending;
@@ -192,6 +195,7 @@ export default function RequestIntakeChatScreen() {
     <View style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Ionicons name="shield-checkmark-outline" size={17} color="#49665B" /><Text style={[styles.noticeText, { writingDirection: direction }]}>{copy.notice}</Text></View>
     <View style={styles.progressCard}><View style={styles.progressTop}><Text style={styles.progressValue}>{completion}%</Text><Text style={styles.progressLabel}>{copy.progress}</Text></View><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${completion}%` }]} /></View></View>
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      {activePlaybook.data ? <PlaybookJourney playbook={activePlaybook.data} isArabic={isArabic} direction={direction} /> : null}
       {messages.map((message) => <View key={message.id} style={[styles.message, message.role === "user" ? styles.userMessage : styles.assistantMessage]}><Text style={[styles.messageText, message.role === "assistant" && styles.assistantText, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{message.text}</Text></View>)}
       {!messages.some((message) => message.role === "user") && conversationId ? <View style={[styles.quickList, { alignItems: isArabic ? "flex-end" : "flex-start" }]}>{copy.quick.map((item) => <Pressable key={item} onPress={() => void sendMessage(item)} style={styles.quick}><Text style={[styles.quickText, { writingDirection: direction }]}>{item}</Text></Pressable>)}</View> : null}
       {busy ? <View style={[styles.typing, { flexDirection: isArabic ? "row-reverse" : "row" }]}><ActivityIndicator size="small" color="#0B5D45" /><Text style={[styles.typingText, { writingDirection: direction }]}>{copy.wait}</Text></View> : null}

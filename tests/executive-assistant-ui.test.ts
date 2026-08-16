@@ -21,6 +21,11 @@ describe("executive assistant entry UI", () => {
     expect(screen).toContain("trpc.executiveAssistant.deleteConversationData.useMutation");
   });
 
+  it("shows the published service plan to the request owner before submission", () => {
+    expect(screen).toContain("trpc.playbooks.activeForService.useQuery");
+    expect(screen).toContain("PlaybookJourney");
+  });
+
   it("routes the main transaction entry to chat intake", () => {
     expect(transactions).toContain('router.push("/assistant/request-intake" as never)');
   });

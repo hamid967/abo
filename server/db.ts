@@ -602,6 +602,16 @@ export async function listActiveServicesForPlaybooks() {
   return db.select({ id: governmentServices.id, name: governmentServices.name }).from(governmentServices).where(eq(governmentServices.isActive, true)).orderBy(asc(governmentServices.name));
 }
 
+export async function getPublishedPlaybookForService(serviceId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ playbookId: servicePlaybooks.id, playbookName: servicePlaybooks.name, serviceName: governmentServices.name, versionId: playbookVersions.id, versionNumber: playbookVersions.versionNumber, title: playbookVersions.title, description: playbookVersions.description, requirements: playbookVersions.requirements, exceptions: playbookVersions.exceptions }).from(servicePlaybooks).innerJoin(governmentServices, eq(servicePlaybooks.serviceId, governmentServices.id)).innerJoin(playbookVersions, eq(playbookVersions.playbookId, servicePlaybooks.id)).where(and(eq(servicePlaybooks.serviceId, serviceId), eq(servicePlaybooks.status, "active"), eq(playbookVersions.status, "published"))).orderBy(desc(playbookVersions.publishedAt)).limit(1);
+  const active = rows[0];
+  if (!active) return undefined;
+  const steps = await db.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes, stepOrder: playbookSteps.stepOrder }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
+  return { ...active, steps };
+}
+
 export async function getPlaybookVersionDetails(playbookId: string, versionId: string) {
   const db = await getDb();
   if (!db) return undefined;
