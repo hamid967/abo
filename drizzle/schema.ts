@@ -94,6 +94,55 @@ export const governmentServices = mysqlTable("government_services", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("government_services_entity_idx").on(table.entityId), foreignKey({ columns: [table.entityId], foreignColumns: [governmentEntities.id], name: "government_services_entity_fk" }).onDelete("restrict")]);
 
+export const servicePlaybooks = mysqlTable("service_playbooks", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  serviceId: int("serviceId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["active", "archived"]).default("active").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("service_playbooks_service_idx").on(table.serviceId, table.status), foreignKey({ columns: [table.serviceId], foreignColumns: [governmentServices.id], name: "service_playbooks_service_fk" }).onDelete("restrict"), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "service_playbooks_creator_fk" }).onDelete("restrict")]);
+
+export const playbookVersions = mysqlTable("playbook_versions", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  playbookId: varchar("playbookId", { length: 36 }).notNull(),
+  versionNumber: int("versionNumber").notNull(),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  requirements: json("requirements"),
+  exceptions: json("exceptions"),
+  createdByUserId: int("createdByUserId").notNull(),
+  publishedByUserId: int("publishedByUserId"),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("playbook_versions_unique").on(table.playbookId, table.versionNumber), index("playbook_versions_active_idx").on(table.playbookId, table.status), foreignKey({ columns: [table.playbookId], foreignColumns: [servicePlaybooks.id], name: "playbook_versions_playbook_fk" }).onDelete("cascade"), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "playbook_versions_creator_fk" }).onDelete("restrict"), foreignKey({ columns: [table.publishedByUserId], foreignColumns: [users.id], name: "playbook_versions_publisher_fk" }).onDelete("set null")]);
+
+export const playbookSteps = mysqlTable("playbook_steps", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  versionId: varchar("versionId", { length: 36 }).notNull(),
+  stepKey: varchar("stepKey", { length: 80 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  instructions: text("instructions"),
+  actionType: mysqlEnum("actionType", ["instruction", "document", "approval", "task"]).default("instruction").notNull(),
+  stepOrder: int("stepOrder").notNull(),
+  isRequired: boolean("isRequired").default(true).notNull(),
+  expectedDurationMinutes: int("expectedDurationMinutes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("playbook_steps_key_unique").on(table.versionId, table.stepKey), uniqueIndex("playbook_steps_order_unique").on(table.versionId, table.stepOrder), foreignKey({ columns: [table.versionId], foreignColumns: [playbookVersions.id], name: "playbook_steps_version_fk" }).onDelete("cascade")]);
+
+export const requestPlaybookAssignments = mysqlTable("request_playbook_assignments", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  requestId: int("requestId").notNull(),
+  playbookId: varchar("playbookId", { length: 36 }).notNull(),
+  versionId: varchar("versionId", { length: 36 }).notNull(),
+  snapshot: json("snapshot").notNull(),
+  assignedByUserId: int("assignedByUserId"),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("request_playbook_assignment_request_unique").on(table.requestId), index("request_playbook_assignment_version_idx").on(table.versionId), foreignKey({ columns: [table.requestId], foreignColumns: [serviceRequests.id], name: "request_playbook_assignment_request_fk" }).onDelete("restrict"), foreignKey({ columns: [table.playbookId], foreignColumns: [servicePlaybooks.id], name: "request_playbook_assignment_playbook_fk" }).onDelete("restrict"), foreignKey({ columns: [table.versionId], foreignColumns: [playbookVersions.id], name: "request_playbook_assignment_version_fk" }).onDelete("restrict"), foreignKey({ columns: [table.assignedByUserId], foreignColumns: [users.id], name: "request_playbook_assignment_actor_fk" }).onDelete("set null")]);
+
 export const serviceRequests = mysqlTable("service_requests", {
   id: int("id").autoincrement().primaryKey(),
   requestNumber: varchar("requestNumber", { length: 32 }).notNull(),

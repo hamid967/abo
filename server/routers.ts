@@ -283,6 +283,60 @@ export const appRouter = router({
       }
     }),
   }),
+  playbooks: router({
+    services: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      return db.listActiveServicesForPlaybooks();
+    }),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await db.listPlaybooksForAdmin();
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "playbook.list_viewed", resourceType: "playbook" });
+      return result;
+    }),
+    detail: protectedProcedure.input(z.object({ playbookId: z.string().uuid(), versionId: z.string().uuid() })).query(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await db.getPlaybookVersionDetails(input.playbookId, input.versionId);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND" });
+      return result;
+    }),
+    create: protectedProcedure.input(z.object({ serviceId: z.number().int().positive(), name: z.string().trim().min(3).max(255) })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      try {
+        const result = await db.createServicePlaybook({ ...input, createdByUserId: ctx.user.id });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "playbook.created", resourceType: "playbook", resourceId: result.id, metadata: { serviceId: input.serviceId } });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "PLAYBOOK_CREATE_FAILED";
+        if (["SERVICE_NOT_FOUND", "ACTIVE_PLAYBOOK_ALREADY_EXISTS"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+    createVersion: protectedProcedure.input(z.object({ playbookId: z.string().uuid(), title: z.string().trim().min(3).max(255), description: z.string().trim().max(3000).optional(), requirements: z.array(z.string().trim().min(1).max(500)).max(30).optional(), exceptions: z.array(z.string().trim().min(1).max(500)).max(20).optional(), steps: z.array(z.object({ stepKey: z.string().trim().regex(/^[a-z][a-z0-9_]{1,78}$/), title: z.string().trim().min(2).max(255), instructions: z.string().trim().max(2000).optional(), actionType: z.enum(["instruction", "document", "approval", "task"]), isRequired: z.boolean(), expectedDurationMinutes: z.number().int().min(1).max(43_200).optional() })).min(1).max(40) })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await db.createPlaybookVersion({ ...input, createdByUserId: ctx.user.id });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "playbook.version_created", resourceType: "playbook_version", resourceId: result.id, metadata: { playbookId: input.playbookId, versionNumber: result.versionNumber, stepCount: input.steps.length } });
+      return result;
+    }),
+    publish: protectedProcedure.input(z.object({ playbookId: z.string().uuid(), versionId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      try {
+        const result = await db.publishPlaybookVersion({ ...input, publishedByUserId: ctx.user.id });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "playbook.version_published", resourceType: "playbook_version", resourceId: input.versionId, metadata: { playbookId: input.playbookId } });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "PLAYBOOK_PUBLISH_FAILED";
+        if (["PLAYBOOK_VERSION_NOT_FOUND", "ARCHIVED_VERSION_CANNOT_BE_PUBLISHED", "PLAYBOOK_STEPS_REQUIRED"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+    archive: protectedProcedure.input(z.object({ playbookId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await db.archiveServicePlaybook(input.playbookId);
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "playbook.archived", resourceType: "playbook", resourceId: input.playbookId });
+      return result;
+    }),
+  }),
   tickets: router({
     list: protectedProcedure.query(({ ctx }) => db.listSupportTickets(ctx.user.id, ctx.user.role)),
     detail: protectedProcedure.input(z.object({ ticketId: z.number().int().positive() })).query(async ({ ctx, input }) => {

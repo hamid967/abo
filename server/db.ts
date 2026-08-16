@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -581,6 +581,88 @@ export async function createUploadedDocument(input: { ownerUserId: number; fileN
   return result[0].insertId;
 }
 
+export type PlaybookStepInput = { stepKey: string; title: string; instructions?: string; actionType: "instruction" | "document" | "approval" | "task"; isRequired: boolean; expectedDurationMinutes?: number };
+
+export async function listPlaybooksForAdmin() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ playbook: servicePlaybooks, serviceName: governmentServices.name, versionId: playbookVersions.id, versionNumber: playbookVersions.versionNumber, versionStatus: playbookVersions.status, title: playbookVersions.title, publishedAt: playbookVersions.publishedAt }).from(servicePlaybooks).innerJoin(governmentServices, eq(servicePlaybooks.serviceId, governmentServices.id)).leftJoin(playbookVersions, eq(playbookVersions.playbookId, servicePlaybooks.id)).orderBy(desc(servicePlaybooks.updatedAt), desc(playbookVersions.versionNumber));
+  const grouped = new Map<string, { id: string; serviceId: number; serviceName: string; name: string; status: "active" | "archived"; versions: Array<{ id: string; versionNumber: number; status: "draft" | "published" | "archived"; title: string; publishedAt: Date | null }> }>();
+  for (const row of rows) {
+    if (!grouped.has(row.playbook.id)) grouped.set(row.playbook.id, { id: row.playbook.id, serviceId: row.playbook.serviceId, serviceName: row.serviceName, name: row.playbook.name, status: row.playbook.status, versions: [] });
+    if (row.versionId) grouped.get(row.playbook.id)!.versions.push({ id: row.versionId, versionNumber: row.versionNumber!, status: row.versionStatus!, title: row.title!, publishedAt: row.publishedAt });
+  }
+  return [...grouped.values()];
+}
+
+export async function listActiveServicesForPlaybooks() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: governmentServices.id, name: governmentServices.name }).from(governmentServices).where(eq(governmentServices.isActive, true)).orderBy(asc(governmentServices.name));
+}
+
+export async function getPlaybookVersionDetails(playbookId: string, versionId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const versions = await db.select({ version: playbookVersions, playbook: servicePlaybooks, serviceName: governmentServices.name }).from(playbookVersions).innerJoin(servicePlaybooks, eq(playbookVersions.playbookId, servicePlaybooks.id)).innerJoin(governmentServices, eq(servicePlaybooks.serviceId, governmentServices.id)).where(and(eq(playbookVersions.id, versionId), eq(playbookVersions.playbookId, playbookId))).limit(1);
+  const result = versions[0];
+  if (!result) return undefined;
+  const steps = await db.select().from(playbookSteps).where(eq(playbookSteps.versionId, versionId)).orderBy(asc(playbookSteps.stepOrder));
+  return { ...result, steps };
+}
+
+export async function createServicePlaybook(input: { serviceId: number; name: string; createdByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const service = await db.select({ id: governmentServices.id }).from(governmentServices).where(and(eq(governmentServices.id, input.serviceId), eq(governmentServices.isActive, true))).limit(1);
+  if (!service[0]) throw new Error("SERVICE_NOT_FOUND");
+  const existing = await db.select({ id: servicePlaybooks.id }).from(servicePlaybooks).where(and(eq(servicePlaybooks.serviceId, input.serviceId), eq(servicePlaybooks.status, "active"))).limit(1);
+  if (existing[0]) throw new Error("ACTIVE_PLAYBOOK_ALREADY_EXISTS");
+  const id = crypto.randomUUID();
+  await db.insert(servicePlaybooks).values({ id, ...input });
+  return { id };
+}
+
+export async function createPlaybookVersion(input: { playbookId: string; title: string; description?: string; requirements?: unknown; exceptions?: unknown; steps: PlaybookStepInput[]; createdByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const playbook = await db.select({ id: servicePlaybooks.id }).from(servicePlaybooks).where(and(eq(servicePlaybooks.id, input.playbookId), eq(servicePlaybooks.status, "active"))).limit(1);
+  if (!playbook[0]) throw new Error("PLAYBOOK_NOT_FOUND");
+  const previous = await db.select({ versionNumber: playbookVersions.versionNumber }).from(playbookVersions).where(eq(playbookVersions.playbookId, input.playbookId)).orderBy(desc(playbookVersions.versionNumber)).limit(1);
+  const versionNumber = (previous[0]?.versionNumber ?? 0) + 1;
+  const versionId = crypto.randomUUID();
+  await db.transaction(async (tx) => {
+    await tx.insert(playbookVersions).values({ id: versionId, playbookId: input.playbookId, versionNumber, title: input.title, description: input.description, requirements: input.requirements, exceptions: input.exceptions, createdByUserId: input.createdByUserId });
+    if (input.steps.length) await tx.insert(playbookSteps).values(input.steps.map((step, index) => ({ id: crypto.randomUUID(), versionId, stepKey: step.stepKey, title: step.title, instructions: step.instructions, actionType: step.actionType, isRequired: step.isRequired, expectedDurationMinutes: step.expectedDurationMinutes, stepOrder: index + 1 })));
+  });
+  return { id: versionId, versionNumber };
+}
+
+export async function publishPlaybookVersion(input: { playbookId: string; versionId: string; publishedByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const version = await db.select({ id: playbookVersions.id, status: playbookVersions.status }).from(playbookVersions).where(and(eq(playbookVersions.id, input.versionId), eq(playbookVersions.playbookId, input.playbookId))).limit(1);
+  if (!version[0]) throw new Error("PLAYBOOK_VERSION_NOT_FOUND");
+  if (version[0].status === "archived") throw new Error("ARCHIVED_VERSION_CANNOT_BE_PUBLISHED");
+  const steps = await db.select({ id: playbookSteps.id }).from(playbookSteps).where(eq(playbookSteps.versionId, input.versionId)).limit(1);
+  if (!steps[0]) throw new Error("PLAYBOOK_STEPS_REQUIRED");
+  await db.transaction(async (tx) => {
+    await tx.update(playbookVersions).set({ status: "archived" }).where(and(eq(playbookVersions.playbookId, input.playbookId), eq(playbookVersions.status, "published"), ne(playbookVersions.id, input.versionId)));
+    await tx.update(playbookVersions).set({ status: "published", publishedAt: new Date(), publishedByUserId: input.publishedByUserId }).where(and(eq(playbookVersions.id, input.versionId), eq(playbookVersions.playbookId, input.playbookId)));
+  });
+  return { success: true } as const;
+}
+
+export async function archiveServicePlaybook(playbookId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    await tx.update(servicePlaybooks).set({ status: "archived" }).where(and(eq(servicePlaybooks.id, playbookId), eq(servicePlaybooks.status, "active")));
+    await tx.update(playbookVersions).set({ status: "archived" }).where(and(eq(playbookVersions.playbookId, playbookId), ne(playbookVersions.status, "archived")));
+  });
+  return { success: true } as const;
+}
+
 export async function listOwnedDocuments(ownerUserId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -822,6 +904,14 @@ export async function submitRequestDraft(ownerUserId: number, conversationId: st
       await tx.update(serviceRequests).set({ requestNumber }).where(eq(serviceRequests.id, requestId));
       const transactionResult = await tx.insert(transactions).values({ requestId, customerUserId: ownerUserId, organizationId: draft.organizationId ?? undefined, entityId: draft.entityId ?? undefined, serviceId: draft.serviceId ?? undefined, referenceNumber: requestNumber, status: "received", priority, nextAction: submissionMessage(language) });
       const transactionId = Number(transactionResult[0].insertId);
+      if (draft.serviceId) {
+        const published = await tx.select({ playbookId: servicePlaybooks.id, playbookName: servicePlaybooks.name, versionId: playbookVersions.id, versionNumber: playbookVersions.versionNumber, versionTitle: playbookVersions.title, requirements: playbookVersions.requirements, exceptions: playbookVersions.exceptions }).from(servicePlaybooks).innerJoin(playbookVersions, eq(playbookVersions.playbookId, servicePlaybooks.id)).where(and(eq(servicePlaybooks.serviceId, draft.serviceId), eq(servicePlaybooks.status, "active"), eq(playbookVersions.status, "published"))).orderBy(desc(playbookVersions.publishedAt)).limit(1);
+        const active = published[0];
+        if (active) {
+          const steps = await tx.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, stepOrder: playbookSteps.stepOrder, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
+          await tx.insert(requestPlaybookAssignments).values({ id: crypto.randomUUID(), requestId, playbookId: active.playbookId, versionId: active.versionId, assignedByUserId: ownerUserId, snapshot: { playbookName: active.playbookName, versionNumber: active.versionNumber, versionTitle: active.versionTitle, requirements: active.requirements, exceptions: active.exceptions, steps } });
+        }
+      }
       const linkedDocuments = await tx.select({ documentId: requestDraftDocuments.documentId }).from(requestDraftDocuments).where(eq(requestDraftDocuments.draftId, draft.id));
       if (linkedDocuments.length) await tx.update(documents).set({ requestId, transactionId }).where(and(eq(documents.ownerUserId, ownerUserId), inArray(documents.id, linkedDocuments.map((item) => item.documentId))));
       await tx.insert(transactionStatusHistory).values({ transactionId, nextStatus: "received", actorUserId: ownerUserId, customerNote: submissionMessage(language) });
