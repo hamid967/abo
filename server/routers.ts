@@ -15,6 +15,7 @@ import { emitAndProcessAutomationEvent } from "./automation-engine";
 import { defaultAutomationRules } from "./default-automation-rules";
 import { validateQuietHours } from "./notification-preferences-policy";
 import { checkAssistantRateLimit } from "./assistant-rate-limit";
+import { summarizeDocumentText } from "./document-summary";
 
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -102,6 +103,25 @@ export const appRouter = router({
       const response = await guideRequestIntake(input);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.request_intake_guidance", resourceType: "assistant", metadata: { stage: input.stage, messageLength: input.message.length } });
       return response;
+    }),
+  }),
+  documentSummary: router({
+    analyze: protectedProcedure.input(z.object({
+      title: z.string().trim().min(2).max(180).optional(),
+      text: z.string().trim().min(200).max(18_000),
+      language: z.enum(["ar", "en"]).default("ar"),
+      consentToProcess: z.literal(true),
+    })).mutation(async ({ ctx, input }) => {
+      const allowance = checkAssistantRateLimit({ userId: ctx.user.id, action: "document_summary" });
+      if (!allowance.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "DOCUMENT_SUMMARY_RATE_LIMITED" });
+      try {
+        const summary = await summarizeDocumentText({ text: input.text, language: input.language });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "document_summary.analyzed", resourceType: "document_summary", metadata: { title: input.title ?? null, textLength: input.text.length, language: input.language } });
+        return summary;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DOCUMENT_SUMMARY_UNAVAILABLE" });
+      }
     }),
   }),
   executiveAssistant: router({
