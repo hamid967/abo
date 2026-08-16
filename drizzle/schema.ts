@@ -227,13 +227,14 @@ export const supportTickets = mysqlTable("support_tickets", {
   customerUserId: int("customerUserId").notNull(),
   transactionId: int("transactionId"),
   assignedUserId: int("assignedUserId"),
+  channel: mysqlEnum("channel", ["support", "abu_mishal_chat"]).default("support").notNull(),
   subject: varchar("subject", { length: 255 }).notNull(),
   status: mysqlEnum("status", ["open", "in_progress", "awaiting_customer", "resolved", "closed"]).default("open").notNull(),
   priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
   closedAt: timestamp("closedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, (table) => [index("support_tickets_customer_idx").on(table.customerUserId, table.updatedAt), index("support_tickets_assignee_idx").on(table.assignedUserId, table.status), index("support_tickets_transaction_idx").on(table.transactionId), foreignKey({ columns: [table.customerUserId], foreignColumns: [users.id], name: "support_tickets_customer_fk" }).onDelete("restrict"), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "support_tickets_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.assignedUserId], foreignColumns: [users.id], name: "support_tickets_assignee_fk" }).onDelete("set null")]);
+}, (table) => [index("support_tickets_customer_idx").on(table.customerUserId, table.updatedAt), index("support_tickets_channel_updated_idx").on(table.channel, table.updatedAt), index("support_tickets_assignee_idx").on(table.assignedUserId, table.status), index("support_tickets_transaction_idx").on(table.transactionId), foreignKey({ columns: [table.customerUserId], foreignColumns: [users.id], name: "support_tickets_customer_fk" }).onDelete("restrict"), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "support_tickets_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.assignedUserId], foreignColumns: [users.id], name: "support_tickets_assignee_fk" }).onDelete("set null")]);
 
 export const ticketMessages = mysqlTable("ticket_messages", {
   id: int("id").autoincrement().primaryKey(),
@@ -241,6 +242,7 @@ export const ticketMessages = mysqlTable("ticket_messages", {
   authorUserId: int("authorUserId").notNull(),
   body: text("body").notNull(),
   isInternal: boolean("isInternal").default(false).notNull(),
+  readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("ticket_messages_ticket_idx").on(table.ticketId, table.createdAt), foreignKey({ columns: [table.ticketId], foreignColumns: [supportTickets.id], name: "ticket_messages_ticket_fk" }).onDelete("cascade"), foreignKey({ columns: [table.authorUserId], foreignColumns: [users.id], name: "ticket_messages_author_fk" }).onDelete("restrict")]);
 

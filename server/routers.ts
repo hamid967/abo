@@ -295,6 +295,57 @@ export const appRouter = router({
       return result;
     }),
   }),
+  abuMishalChat: router({
+    mine: protectedProcedure.query(async ({ ctx }) => {
+      if (canViewSystemDashboard(ctx.user.role)) return null;
+      return db.getCustomerAbuMishalChat(ctx.user.id);
+    }),
+    detail: protectedProcedure.input(z.object({ ticketId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const ticket = await db.getSupportTicketById(input.ticketId);
+      const isAdmin = canViewSystemDashboard(ctx.user.role);
+      if (!ticket || ticket.channel !== "abu_mishal_chat" || (!isAdmin && ticket.customerUserId !== ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
+      const messages = await db.listTicketMessages(ticket.id, false);
+      return { ticket, messages, isAdmin };
+    }),
+    adminInbox: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      return db.listAbuMishalChatThreads();
+    }),
+    send: protectedProcedure.input(z.object({ ticketId: z.number().int().positive().optional(), body: z.string().trim().min(1).max(4000) })).mutation(async ({ ctx, input }) => {
+      const isAdmin = canViewSystemDashboard(ctx.user.role);
+      let ticket = input.ticketId ? await db.getSupportTicketById(input.ticketId) : undefined;
+      if (isAdmin) {
+        if (!ticket || ticket.channel !== "abu_mishal_chat") throw new TRPCError({ code: "NOT_FOUND" });
+        const message = await db.addTicketMessage({ ticketId: ticket.id, authorUserId: ctx.user.id, body: input.body, isInternal: false, nextStatus: "awaiting_customer" });
+        await db.createInAppNotification({ recipientUserId: ticket.customerUserId, title: "رد جديد من أبو مشعل", body: "وصلك رد جديد في محادثتك مع أبو مشعل.", type: "abu_mishal_chat", data: { ticketId: ticket.id } });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "abu_mishal_chat.admin_message_sent", resourceType: "support_ticket", resourceId: ticket.id });
+        return { ...message, ticketId: ticket.id };
+      }
+      if (ticket && (ticket.channel !== "abu_mishal_chat" || ticket.customerUserId !== ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
+      ticket = ticket ?? await db.createCustomerAbuMishalChat(ctx.user.id);
+      if (!ticket) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "تعذر بدء المحادثة حالياً." });
+      const message = await db.addTicketMessage({ ticketId: ticket.id, authorUserId: ctx.user.id, body: input.body, isInternal: false, nextStatus: "in_progress" });
+      const admins = await db.listAdminNotificationRecipients();
+      await Promise.all(admins.map((admin) => db.createInAppNotification({ recipientUserId: admin.id, title: "رسالة جديدة إلى أبو مشعل", body: "وصلت رسالة جديدة من أحد العملاء في صندوق المحادثات.", type: "abu_mishal_chat", data: { ticketId: ticket!.id } })));
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "abu_mishal_chat.customer_message_sent", resourceType: "support_ticket", resourceId: ticket.id });
+      return { ...message, ticketId: ticket.id };
+    }),
+    markRead: protectedProcedure.input(z.object({ ticketId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const ticket = await db.getSupportTicketById(input.ticketId);
+      const isAdmin = canViewSystemDashboard(ctx.user.role);
+      if (!ticket || ticket.channel !== "abu_mishal_chat" || (!isAdmin && ticket.customerUserId !== ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
+      return db.markAbuMishalChatRead({ ticketId: ticket.id, viewerUserId: ctx.user.id, customerUserId: ticket.customerUserId, adminViewer: isAdmin });
+    }),
+    updateStatus: protectedProcedure.input(z.object({ ticketId: z.number().int().positive(), status: supportTicketStatusSchema })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      const ticket = await db.getSupportTicketById(input.ticketId);
+      if (!ticket || ticket.channel !== "abu_mishal_chat") throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateSupportTicket(ticket.id, { status: input.status });
+      await db.createInAppNotification({ recipientUserId: ticket.customerUserId, title: "تحديث على محادثة أبو مشعل", body: "تم تحديث حالة محادثتك مع أبو مشعل.", type: "abu_mishal_chat", data: { ticketId: ticket.id } });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "abu_mishal_chat.status_updated", resourceType: "support_ticket", resourceId: ticket.id, metadata: { status: input.status } });
+      return { success: true } as const;
+    }),
+  }),
   security: router({
     loginActivity: protectedProcedure.query(async ({ ctx }) => {
       const result = await db.listLoginActivity(ctx.user.id);

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, notInArray, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizations, requestDraftDocuments, requestDrafts, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
@@ -335,10 +335,10 @@ export async function createAuditLog(input: { actorUserId?: number | null; actio
   await db.insert(auditLogs).values({ actorUserId: input.actorUserId ?? null, action: input.action, resourceType: input.resourceType, resourceId: input.resourceId === undefined || input.resourceId === null ? null : String(input.resourceId), metadata: input.metadata });
 }
 
-export async function createSupportTicket(input: { customerUserId: number; transactionId?: number; subject: string; priority: "low" | "normal" | "high" | "urgent"; initialMessage: string }) {
+export async function createSupportTicket(input: { customerUserId: number; transactionId?: number; subject: string; priority: "low" | "normal" | "high" | "urgent"; initialMessage: string; channel?: "support" | "abu_mishal_chat" }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(supportTickets).values({ customerUserId: input.customerUserId, transactionId: input.transactionId, subject: input.subject, priority: input.priority });
+  const result = await db.insert(supportTickets).values({ customerUserId: input.customerUserId, transactionId: input.transactionId, subject: input.subject, priority: input.priority, channel: input.channel ?? "support" });
   const ticketId = result[0].insertId;
   await db.insert(ticketMessages).values({ ticketId, authorUserId: input.customerUserId, body: input.initialMessage, isInternal: false });
   return { id: ticketId };
@@ -348,7 +348,7 @@ export async function listSupportTickets(userId: number, role: string) {
   const db = await getDb();
   if (!db) return [];
   const query = db.select({ id: supportTickets.id, subject: supportTickets.subject, status: supportTickets.status, priority: supportTickets.priority, transactionId: supportTickets.transactionId, customerUserId: supportTickets.customerUserId, assignedUserId: supportTickets.assignedUserId, updatedAt: supportTickets.updatedAt, createdAt: supportTickets.createdAt, customerName: users.name }).from(supportTickets).leftJoin(users, eq(supportTickets.customerUserId, users.id));
-  return canOperateTransactions(role) ? query.orderBy(desc(supportTickets.updatedAt)).limit(100) : query.where(eq(supportTickets.customerUserId, userId)).orderBy(desc(supportTickets.updatedAt)).limit(100);
+  return canOperateTransactions(role) ? query.where(eq(supportTickets.channel, "support")).orderBy(desc(supportTickets.updatedAt)).limit(100) : query.where(and(eq(supportTickets.customerUserId, userId), eq(supportTickets.channel, "support"))).orderBy(desc(supportTickets.updatedAt)).limit(100);
 }
 
 export async function getSupportTicketById(ticketId: number) {
@@ -361,7 +361,7 @@ export async function getSupportTicketById(ticketId: number) {
 export async function listTicketMessages(ticketId: number, includeInternal: boolean) {
   const db = await getDb();
   if (!db) return [];
-  const query = db.select({ id: ticketMessages.id, ticketId: ticketMessages.ticketId, authorUserId: ticketMessages.authorUserId, authorName: users.name, body: ticketMessages.body, isInternal: ticketMessages.isInternal, createdAt: ticketMessages.createdAt }).from(ticketMessages).leftJoin(users, eq(ticketMessages.authorUserId, users.id));
+  const query = db.select({ id: ticketMessages.id, ticketId: ticketMessages.ticketId, authorUserId: ticketMessages.authorUserId, authorName: users.name, body: ticketMessages.body, isInternal: ticketMessages.isInternal, readAt: ticketMessages.readAt, createdAt: ticketMessages.createdAt }).from(ticketMessages).leftJoin(users, eq(ticketMessages.authorUserId, users.id));
   return includeInternal ? query.where(eq(ticketMessages.ticketId, ticketId)).orderBy(asc(ticketMessages.createdAt)) : query.where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.isInternal, false))).orderBy(asc(ticketMessages.createdAt));
 }
 
@@ -372,6 +372,52 @@ export async function addTicketMessage(input: { ticketId: number; authorUserId: 
   const result = await db.insert(ticketMessages).values(message);
   await db.update(supportTickets).set({ updatedAt: new Date(), status: nextStatus }).where(eq(supportTickets.id, input.ticketId));
   return { id: result[0].insertId };
+}
+
+export async function getCustomerAbuMishalChat(customerUserId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(supportTickets).where(and(eq(supportTickets.customerUserId, customerUserId), eq(supportTickets.channel, "abu_mishal_chat"))).orderBy(desc(supportTickets.updatedAt)).limit(1);
+  return rows[0];
+}
+
+export async function createCustomerAbuMishalChat(customerUserId: number) {
+  const existing = await getCustomerAbuMishalChat(customerUserId);
+  if (existing) return existing;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(supportTickets).values({ customerUserId, channel: "abu_mishal_chat", subject: "محادثة مع أبو مشعل", priority: "normal", status: "open" });
+  return getSupportTicketById(Number(result[0].insertId));
+}
+
+export async function listAbuMishalChatThreads() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: supportTickets.id,
+    customerUserId: supportTickets.customerUserId,
+    customerName: users.name,
+    subject: supportTickets.subject,
+    status: supportTickets.status,
+    assignedUserId: supportTickets.assignedUserId,
+    updatedAt: supportTickets.updatedAt,
+    unreadCount: sql<number>`sum(case when ${ticketMessages.authorUserId} = ${supportTickets.customerUserId} and ${ticketMessages.readAt} is null then 1 else 0 end)`,
+    lastMessageAt: sql<Date | null>`max(${ticketMessages.createdAt})`,
+  }).from(supportTickets).leftJoin(users, eq(supportTickets.customerUserId, users.id)).leftJoin(ticketMessages, eq(ticketMessages.ticketId, supportTickets.id)).where(eq(supportTickets.channel, "abu_mishal_chat")).groupBy(supportTickets.id, supportTickets.customerUserId, users.name, supportTickets.subject, supportTickets.status, supportTickets.assignedUserId, supportTickets.updatedAt).orderBy(desc(supportTickets.updatedAt)).limit(100);
+}
+
+export async function markAbuMishalChatRead(input: { ticketId: number; viewerUserId: number; customerUserId: number; adminViewer: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const authorCondition = input.adminViewer ? eq(ticketMessages.authorUserId, input.customerUserId) : ne(ticketMessages.authorUserId, input.viewerUserId);
+  await db.update(ticketMessages).set({ readAt: new Date() }).where(and(eq(ticketMessages.ticketId, input.ticketId), eq(ticketMessages.isInternal, false), authorCondition, isNull(ticketMessages.readAt)));
+  return { success: true } as const;
+}
+
+export async function listAdminNotificationRecipients() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super_admin"])).limit(50);
 }
 
 export async function updateSupportTicket(ticketId: number, input: { status?: "open" | "in_progress" | "awaiting_customer" | "resolved" | "closed"; priority?: "low" | "normal" | "high" | "urgent"; assignedUserId?: number | null }) {
