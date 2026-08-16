@@ -1114,6 +1114,8 @@ export async function listTaskTrackingForUser(userId: number) {
     dueAt: tasks.dueAt,
     slaDueAt: tasks.slaDueAt,
     slaMinutes: tasks.slaMinutes,
+    createdAt: tasks.createdAt,
+    completedAt: tasks.completedAt,
     assignmentSource: tasks.assignmentSource,
     transactionId: tasks.transactionId,
     transactionReference: transactions.referenceNumber,

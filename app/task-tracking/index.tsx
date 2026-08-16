@@ -6,8 +6,10 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenContainer } from "@/components/screen-container";
 import { SlaBadge } from "@/components/sla-badge";
 import { SlaSummaryChart } from "@/components/sla-summary-chart";
+import { SlaWeeklyTrendChart } from "@/components/sla-weekly-trend-chart";
 import { AppText as Text } from "@/components/ui/app-text";
 import { calculateSlaDashboard } from "@/lib/sla-dashboard";
+import { calculateSlaWeeklyTrend } from "@/lib/sla-weekly-trend";
 import { trpc } from "@/lib/trpc";
 
 type TaskFilter = "all" | "needs_attention" | "overdue";
@@ -20,6 +22,7 @@ export default function TaskTrackingScreen() {
   const updateStatus = trpc.taskTracking.updateStatus.useMutation({ onSuccess: () => void tracking.refetch() });
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
   const dashboard = useMemo(() => calculateSlaDashboard(tracking.data ?? [], now), [now, tracking.data]);
+  const weeklyTrend = useMemo(() => calculateSlaWeeklyTrend(tracking.data ?? [], now), [now, tracking.data]);
   const items = useMemo(() => (tracking.data ?? []).filter((task) => {
     if (filter === "all") return task.status !== "cancelled";
     const dueAt = task.slaDueAt ?? task.dueAt;
@@ -36,6 +39,7 @@ export default function TaskTrackingScreen() {
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.back}><Ionicons name="close" color="#17382F" size={22} /></Pressable><View style={styles.headerCopy}><Text style={styles.brand}>أبو مشعل · مساحة العمل</Text><Text style={styles.title}>متابعة SLA للمهام</Text><Text style={styles.subtitle}>كل لون يوضح الوقت المتبقي للمهمة المولدة أو المستحقة.</Text></View></View>
     <View style={styles.legend}><Legend color="#1E8C5A" label="ضمن الوقت" /><Legend color="#D88712" label="قريبة" /><Legend color="#D92D20" label="متأخرة" /></View>
     <SlaSummaryChart summary={dashboard} />
+    <SlaWeeklyTrendChart trend={weeklyTrend} />
     <View style={styles.filters}>{(["all", "needs_attention", "overdue"] as TaskFilter[]).map((value) => <Pressable key={value} onPress={() => setFilter(value)} style={[styles.filter, filter === value && styles.filterActive]}><Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{({ all: "الكل", needs_attention: "تحتاج انتباه", overdue: "متأخرة" } as const)[value]}</Text></Pressable>)}</View>
     <FlatList data={items} keyExtractor={(item) => String(item.id)} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={tracking.isRefetching} onRefresh={() => void tracking.refetch()} tintColor="#0B5D45" />} ListEmptyComponent={<View style={styles.empty}><Ionicons name="checkmark-done-outline" color="#78A190" size={34} /><Text style={styles.emptyText}>{tracking.isLoading ? "قاعد نحمّل مهامك..." : "ما فيه مهام ضمن هذا الفلتر."}</Text></View>} renderItem={({ item }) => {
       const completed = item.status === "completed";
