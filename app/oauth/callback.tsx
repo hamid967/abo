@@ -3,7 +3,7 @@ import * as Api from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator } from "react-native";
 import { AppText as Text } from "@/components/ui/app-text";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,14 +19,21 @@ export default function OAuthCallback() {
   }>();
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [incomingUrl, setIncomingUrl] = useState<string | null>(null);
+  const processedCallbackRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener("url", ({ url }) => setIncomingUrl(url));
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const handleCallback = async () => {
       console.log("[OAuth] Callback handler triggered");
-      console.log("[OAuth] Params received:", {
-        code: params.code,
-        state: params.state,
-        error: params.error,
+        console.log("[OAuth] Params received:", {
+          hasCode: Boolean(params.code),
+          hasState: Boolean(params.state),
+          hasError: Boolean(params.error),
         sessionToken: params.sessionToken ? "present" : "missing",
         user: params.user ? "present" : "missing",
       });
@@ -84,7 +91,7 @@ export default function OAuthCallback() {
         } else {
           console.log("[OAuth] No params found, checking Linking.getInitialURL()...");
           // Fallback: try to get from Linking
-          const initialUrl = await Linking.getInitialURL();
+          const initialUrl = incomingUrl ?? await Linking.getInitialURL();
           console.log("[OAuth] Linking.getInitialURL():", initialUrl);
           if (initialUrl) {
             url = initialUrl;
@@ -119,11 +126,7 @@ export default function OAuthCallback() {
             code = urlObj.searchParams.get("code");
             state = urlObj.searchParams.get("state");
             sessionToken = urlObj.searchParams.get("sessionToken");
-            console.log("[OAuth] Extracted from URL:", {
-              code: code?.substring(0, 20) + "...",
-              state: state?.substring(0, 20) + "...",
-              sessionToken: sessionToken ? "present" : "missing",
-            });
+            console.log("[OAuth] Parsed callback URL", { hasCode: Boolean(code), hasState: Boolean(state), hasSessionToken: Boolean(sessionToken) });
           } catch (e) {
             console.log("[OAuth] Failed to parse as full URL, trying regex:", e);
             // Try parsing as relative URL with query params
@@ -135,11 +138,7 @@ export default function OAuthCallback() {
                 if (key === "state") state = decodeURIComponent(value);
                 if (key === "sessionToken") sessionToken = decodeURIComponent(value);
               });
-              console.log("[OAuth] Extracted from regex:", {
-                code: code?.substring(0, 20) + "...",
-                state: state?.substring(0, 20) + "...",
-                sessionToken: sessionToken ? "present" : "missing",
-              });
+              console.log("[OAuth] Parsed callback query", { hasCode: Boolean(code), hasState: Boolean(state), hasSessionToken: Boolean(sessionToken) });
             }
           }
         }
@@ -176,11 +175,12 @@ export default function OAuthCallback() {
           return;
         }
 
+        const callbackKey = `${code}:${state}`;
+        if (processedCallbackRef.current === callbackKey) return;
+        processedCallbackRef.current = callbackKey;
+
         // Exchange code for session token
-        console.log("[OAuth] Exchanging code for session token...", {
-          code: code.substring(0, 20) + "...",
-          state: state.substring(0, 20) + "...",
-        });
+        console.log("[OAuth] Exchanging callback code for a session token");
         const result = await Api.exchangeOAuthCode(code, state);
         console.log("[OAuth] Exchange result:", {
           hasSessionToken: !!result.sessionToken,
@@ -233,7 +233,7 @@ export default function OAuthCallback() {
     };
 
     handleCallback();
-  }, [params.code, params.state, params.error, params.sessionToken, params.user, router]);
+  }, [incomingUrl, params.code, params.state, params.error, params.sessionToken, params.user, router]);
 
   return (
     <SafeAreaView className="flex-1" edges={["top", "bottom", "left", "right"]}>

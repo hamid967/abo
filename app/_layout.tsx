@@ -137,6 +137,10 @@ export default function RootLayout() {
                 <Stack.Screen name="search/index" />
                 <Stack.Screen name="assistant/index" />
                 <Stack.Screen name="assistant/request-intake" />
+                <Stack.Screen name="chat/abu-mishal" />
+                <Stack.Screen name="admin/chats" />
+                <Stack.Screen name="document-summary/index" />
+                <Stack.Screen name="security/activity" />
                 <Stack.Screen name="reports/index" />
                 <Stack.Screen name="account/index" />
                 <Stack.Screen name="oauth/callback" />
