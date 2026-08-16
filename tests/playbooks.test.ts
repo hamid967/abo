@@ -38,6 +38,13 @@ describe("service playbooks", () => {
     expect(db).toContain("onDuplicateKeyUpdate");
   });
 
+  it("persists assignment rules and SLA minutes before generated tasks are created", () => {
+    expect(schema).toContain("assignmentRule");
+    expect(schema).toContain("slaDueAt");
+    expect(db).toContain("resolveGeneratedTaskAssignee");
+    expect(db).toContain("slaDueAtForPlaybookStep");
+  });
+
   it("restricts management operations to the protected admin dashboard role", () => {
     expect(router).toContain("playbooks: router");
     expect(router).toContain("canViewSystemDashboard(ctx.user.role)");

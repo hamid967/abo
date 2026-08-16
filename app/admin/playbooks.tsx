@@ -9,6 +9,7 @@ import { useAccount } from "@/hooks/use-account";
 import { trpc } from "@/lib/trpc";
 
 type StepKind = "instruction" | "document" | "approval" | "task";
+type AssignmentRule = "transaction_assignee" | "least_loaded_staff" | "request_owner" | "unassigned";
 
 export default function PlaybooksAdminScreen() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function PlaybooksAdminScreen() {
   const [playbookName, setPlaybookName] = useState("");
   const [selectedPlaybookId, setSelectedPlaybookId] = useState<string | null>(null);
   const [versionTitle, setVersionTitle] = useState("");
-  const [stepsText, setStepsText] = useState("collect_documents | جمع المستندات | document\nreview_request | مراجعة الطلب | approval");
+  const [stepsText, setStepsText] = useState("collect_documents | جمع المستندات | document | request_owner | 24\nreview_request | مراجعة الطلب | approval | least_loaded_staff | 8");
   const [error, setError] = useState<string | null>(null);
 
   const create = trpc.playbooks.create.useMutation({ onSuccess: async () => { setPlaybookName(""); setServiceId(null); await playbooks.refetch(); } });
@@ -32,9 +33,12 @@ export default function PlaybooksAdminScreen() {
   function parsedSteps() {
     const lines = stepsText.split("\n").map((line) => line.trim()).filter(Boolean);
     return lines.map((line, index) => {
-      const [key, title, kind] = line.split("|").map((part) => part.trim());
+      const [key, title, kind, assignment, slaHours] = line.split("|").map((part) => part.trim());
       const actionType: StepKind = kind === "document" || kind === "approval" || kind === "task" ? kind : "instruction";
-      return { stepKey: key || `step_${index + 1}`, title: title || `خطوة ${index + 1}`, actionType, isRequired: true };
+      const assignmentRule: AssignmentRule = assignment === "least_loaded_staff" || assignment === "request_owner" || assignment === "unassigned" ? assignment : "transaction_assignee";
+      const hours = Number(slaHours);
+      const slaMinutes = Number.isFinite(hours) && hours >= 0.25 ? Math.round(hours * 60) : undefined;
+      return { stepKey: key || `step_${index + 1}`, title: title || `خطوة ${index + 1}`, actionType, assignmentRule, slaMinutes, isRequired: true };
     });
   }
 
@@ -64,7 +68,7 @@ export default function PlaybooksAdminScreen() {
     {playbooks.data?.length ? playbooks.data.map((playbook) => <View key={playbook.id} style={styles.card}><View style={styles.cardTop}><View style={styles.cardCopy}><Text style={styles.cardTitle}>{playbook.name}</Text><Text style={styles.cardMeta}>{playbook.serviceName} · {playbook.status === "active" ? "فعّال" : "مؤرشف"}</Text></View><Pressable disabled={archive.isPending || playbook.status !== "active"} onPress={() => Alert.alert("أرشفة Playbook", "لن تتغير الطلبات المرتبطة بإصدارات سابقة.", [{ text: "إلغاء", style: "cancel" }, { text: "أرشفة", style: "destructive", onPress: () => archive.mutate({ playbookId: playbook.id }) }])} style={styles.archive}><Text style={styles.archiveText}>أرشفة</Text></Pressable></View>
       <View style={styles.versions}>{playbook.versions.length ? playbook.versions.map((version) => <View key={version.id} style={styles.version}><View style={styles.versionCopy}><Text style={styles.versionTitle}>v{version.versionNumber} · {version.title}</Text><Text style={styles.versionMeta}>{version.status === "published" ? "منشور" : version.status === "draft" ? "مسودة" : "مؤرشف"}</Text></View>{version.status === "draft" ? <Pressable disabled={publish.isPending} onPress={() => publish.mutate({ playbookId: playbook.id, versionId: version.id })} style={styles.publish}><Text style={styles.publishText}>نشر</Text></Pressable> : null}</View>) : <Text style={styles.emptyText}>ما فيه إصدارات للحين.</Text>}</View>
       <Pressable onPress={() => setSelectedPlaybookId(selectedPlaybookId === playbook.id ? null : playbook.id)} style={styles.versionButton}><Ionicons name="add-circle-outline" size={17} color="#0B5D45" /><Text style={styles.versionButtonText}>إصدار جديد</Text></Pressable>
-      {selectedPlaybookId === playbook.id ? <View style={styles.versionForm}><TextInput value={versionTitle} onChangeText={setVersionTitle} placeholder="عنوان الإصدار" placeholderTextColor="#8A9A91" style={styles.input} textAlign="right" /><Text style={styles.hint}>صيغة الخطوات: المفتاح | عنوان الخطوة | النوع (instruction / document / approval / task)</Text><TextInput value={stepsText} onChangeText={setStepsText} multiline placeholderTextColor="#8A9A91" style={[styles.input, styles.stepsInput]} textAlign="right" textAlignVertical="top" /><Pressable disabled={createVersion.isPending} onPress={() => void handleCreateVersion()} style={[styles.primary, createVersion.isPending && styles.disabled]}>{createVersion.isPending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>حفظ كمسودة إصدار</Text>}</Pressable></View> : null}
+      {selectedPlaybookId === playbook.id ? <View style={styles.versionForm}><TextInput value={versionTitle} onChangeText={setVersionTitle} placeholder="عنوان الإصدار" placeholderTextColor="#8A9A91" style={styles.input} textAlign="right" /><Text style={styles.hint}>صيغة الخطوات: المفتاح | عنوان الخطوة | النوع | قاعدة التعيين | SLA بالساعات</Text><Text style={styles.hint}>القواعد: transaction_assignee أو least_loaded_staff أو request_owner أو unassigned. اترك SLA فارغاً لاستخدام المهلة الافتراضية حسب الأولوية.</Text><TextInput value={stepsText} onChangeText={setStepsText} multiline placeholderTextColor="#8A9A91" style={[styles.input, styles.stepsInput]} textAlign="right" textAlignVertical="top" /><Pressable disabled={createVersion.isPending} onPress={() => void handleCreateVersion()} style={[styles.primary, createVersion.isPending && styles.disabled]}>{createVersion.isPending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>حفظ كمسودة إصدار</Text>}</Pressable></View> : null}
     </View>) : <View style={styles.empty}><Ionicons name="book-outline" size={30} color="#7A8B82" /><Text style={styles.emptyText}>ما فيه Playbooks حالياً. اختر خدمة وأنشئ أول Playbook لها.</Text></View>}
   </ScrollView></ScreenContainer>;
 }

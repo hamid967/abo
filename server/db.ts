@@ -12,7 +12,7 @@ import { formatRequestNumber, submissionMessage } from "./request-submission";
 import { canAttachDraftDocument } from "./draft-document-policy";
 import { handoffPriorityForReason, handoffSubject } from "./handoff-policy";
 import { classifyLoginSecurity, formatLoginSecurityAlert, normalizeDeviceId } from "./login-security";
-import { dueAtForPlaybookStep, playbookTaskSourceKey, shouldGenerateTaskFromPlaybookStep } from "./playbook-task-policy";
+import { dueAtForPlaybookStep, playbookTaskSourceKey, resolveGeneratedTaskAssignee, shouldGenerateTaskFromPlaybookStep, slaDueAtForPlaybookStep, slaMinutesForPlaybookStep } from "./playbook-task-policy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -582,7 +582,7 @@ export async function createUploadedDocument(input: { ownerUserId: number; fileN
   return result[0].insertId;
 }
 
-export type PlaybookStepInput = { stepKey: string; title: string; instructions?: string; actionType: "instruction" | "document" | "approval" | "task"; isRequired: boolean; expectedDurationMinutes?: number };
+export type PlaybookStepInput = { stepKey: string; title: string; instructions?: string; actionType: "instruction" | "document" | "approval" | "task"; assignmentRule?: "transaction_assignee" | "least_loaded_staff" | "request_owner" | "unassigned"; isRequired: boolean; expectedDurationMinutes?: number; slaMinutes?: number };
 
 export async function listPlaybooksForAdmin() {
   const db = await getDb();
@@ -608,7 +608,7 @@ export async function getPublishedPlaybookForService(serviceId: number) {
   const rows = await db.select({ playbookId: servicePlaybooks.id, playbookName: servicePlaybooks.name, serviceName: governmentServices.name, versionId: playbookVersions.id, versionNumber: playbookVersions.versionNumber, title: playbookVersions.title, description: playbookVersions.description, requirements: playbookVersions.requirements, exceptions: playbookVersions.exceptions }).from(servicePlaybooks).innerJoin(governmentServices, eq(servicePlaybooks.serviceId, governmentServices.id)).innerJoin(playbookVersions, eq(playbookVersions.playbookId, servicePlaybooks.id)).where(and(eq(servicePlaybooks.serviceId, serviceId), eq(servicePlaybooks.status, "active"), eq(playbookVersions.status, "published"))).orderBy(desc(playbookVersions.publishedAt)).limit(1);
   const active = rows[0];
   if (!active) return undefined;
-  const steps = await db.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes, stepOrder: playbookSteps.stepOrder }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
+  const steps = await db.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, assignmentRule: playbookSteps.assignmentRule, slaMinutes: playbookSteps.slaMinutes, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes, stepOrder: playbookSteps.stepOrder }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
   return { ...active, steps };
 }
 
@@ -644,7 +644,7 @@ export async function createPlaybookVersion(input: { playbookId: string; title: 
   const versionId = crypto.randomUUID();
   await db.transaction(async (tx) => {
     await tx.insert(playbookVersions).values({ id: versionId, playbookId: input.playbookId, versionNumber, title: input.title, description: input.description, requirements: input.requirements, exceptions: input.exceptions, createdByUserId: input.createdByUserId });
-    if (input.steps.length) await tx.insert(playbookSteps).values(input.steps.map((step, index) => ({ id: crypto.randomUUID(), versionId, stepKey: step.stepKey, title: step.title, instructions: step.instructions, actionType: step.actionType, isRequired: step.isRequired, expectedDurationMinutes: step.expectedDurationMinutes, stepOrder: index + 1 })));
+    if (input.steps.length) await tx.insert(playbookSteps).values(input.steps.map((step, index) => ({ id: crypto.randomUUID(), versionId, stepKey: step.stepKey, title: step.title, instructions: step.instructions, actionType: step.actionType, assignmentRule: step.assignmentRule ?? "transaction_assignee", isRequired: step.isRequired, expectedDurationMinutes: step.expectedDurationMinutes, slaMinutes: step.slaMinutes, stepOrder: index + 1 })));
   });
   return { id: versionId, versionNumber };
 }
@@ -919,9 +919,19 @@ export async function submitRequestDraft(ownerUserId: number, conversationId: st
         const published = await tx.select({ playbookId: servicePlaybooks.id, playbookName: servicePlaybooks.name, versionId: playbookVersions.id, versionNumber: playbookVersions.versionNumber, versionTitle: playbookVersions.title, requirements: playbookVersions.requirements, exceptions: playbookVersions.exceptions }).from(servicePlaybooks).innerJoin(playbookVersions, eq(playbookVersions.playbookId, servicePlaybooks.id)).where(and(eq(servicePlaybooks.serviceId, draft.serviceId), eq(servicePlaybooks.status, "active"), eq(playbookVersions.status, "published"))).orderBy(desc(playbookVersions.publishedAt)).limit(1);
         const active = published[0];
         if (active) {
-          const steps = await tx.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, stepOrder: playbookSteps.stepOrder, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
+          const steps = await tx.select({ stepKey: playbookSteps.stepKey, title: playbookSteps.title, instructions: playbookSteps.instructions, actionType: playbookSteps.actionType, assignmentRule: playbookSteps.assignmentRule, slaMinutes: playbookSteps.slaMinutes, stepOrder: playbookSteps.stepOrder, isRequired: playbookSteps.isRequired, expectedDurationMinutes: playbookSteps.expectedDurationMinutes }).from(playbookSteps).where(eq(playbookSteps.versionId, active.versionId)).orderBy(asc(playbookSteps.stepOrder));
           await tx.insert(requestPlaybookAssignments).values({ id: crypto.randomUUID(), requestId, playbookId: active.playbookId, versionId: active.versionId, assignedByUserId: ownerUserId, snapshot: { playbookName: active.playbookName, versionNumber: active.versionNumber, versionTitle: active.versionTitle, requirements: active.requirements, exceptions: active.exceptions, steps } });
-          const generatedTasks = steps.filter(shouldGenerateTaskFromPlaybookStep).map((step) => ({ transactionId, ownerUserId, sourceType: "playbook_step" as const, sourceKey: playbookTaskSourceKey(active.versionId, step.stepKey), title: step.title, description: step.instructions ?? (language === "ar" ? `إجراء مولّد من Playbook ${active.playbookName} (الإصدار ${active.versionNumber}).` : `Task generated from ${active.playbookName} (version ${active.versionNumber}).`), priority, dueAt: dueAtForPlaybookStep(step) }));
+          const staff = await tx.select({ id: users.id }).from(users).where(inArray(users.role, ["employee", "supervisor"]));
+          const staffIds = staff.map((member) => member.id);
+          const loadRows = staffIds.length ? await tx.select({ assigneeUserId: tasks.assigneeUserId, openCount: count(tasks.id) }).from(tasks).where(and(inArray(tasks.assigneeUserId, staffIds), inArray(tasks.status, ["new", "in_progress", "awaiting_customer", "awaiting_external"]))).groupBy(tasks.assigneeUserId) : [];
+          const openLoads = new Map(loadRows.filter((row): row is typeof row & { assigneeUserId: number } => row.assigneeUserId !== null).map((row) => [row.assigneeUserId, Number(row.openCount)]));
+          const leastLoadedStaff = () => staffIds.slice().sort((left, right) => (openLoads.get(left) ?? 0) - (openLoads.get(right) ?? 0) || left - right)[0];
+          const generatedTasks = steps.filter(shouldGenerateTaskFromPlaybookStep).map((step) => {
+            const assignee = resolveGeneratedTaskAssignee({ rule: step.assignmentRule, requestOwnerUserId: ownerUserId, leastLoadedStaffUserId: leastLoadedStaff() });
+            if (assignee.assigneeUserId && assignee.assignmentSource === "least_loaded_staff") openLoads.set(assignee.assigneeUserId, (openLoads.get(assignee.assigneeUserId) ?? 0) + 1);
+            const slaMinutes = slaMinutesForPlaybookStep(step, priority);
+            return { transactionId, ownerUserId, assigneeUserId: assignee.assigneeUserId, assignmentSource: assignee.assignmentSource, sourceType: "playbook_step" as const, sourceKey: playbookTaskSourceKey(active.versionId, step.stepKey), title: step.title, description: step.instructions ?? (language === "ar" ? `إجراء مولّد من Playbook ${active.playbookName} (الإصدار ${active.versionNumber}).` : `Task generated from ${active.playbookName} (version ${active.versionNumber}).`), priority, dueAt: dueAtForPlaybookStep(step), slaMinutes, slaDueAt: slaDueAtForPlaybookStep(step, priority) };
+          });
           if (generatedTasks.length) await tx.insert(tasks).values(generatedTasks).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
         }
       }
