@@ -26,5 +26,8 @@ describe("voice transaction intake", () => {
     expect(screen).toContain("audioFile.delete()");
     expect(screen).toContain("formatRecordingDuration(recorderState.durationMillis)");
     expect(screen).toContain("مدة التسجيل الحالية");
+    expect(screen).toContain("async function cancelVoiceInput()");
+    expect(screen).toContain("إلغاء التسجيل");
+    expect(screen).toContain("new ExpoFile(uri).delete()");
   });
 });

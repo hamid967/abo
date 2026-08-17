@@ -143,6 +143,20 @@ export default function RequestIntakeChatScreen() {
     }
   }
 
+  async function cancelVoiceInput() {
+    if (!recorderState.isRecording) return;
+    setVoiceError(null);
+    try {
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
+      if (uri) {
+        try { new ExpoFile(uri).delete(); } catch { /* Cache cleanup is best-effort. */ }
+      }
+    } catch {
+      setVoiceError(isArabic ? "ما قدرنا نلغي التسجيل الحين. جرّب مرة ثانية." : "The recording could not be cancelled. Try again.");
+    }
+  }
+
   async function saveField(field: EditableField, value: string) {
     if (!conversationId || !value.trim()) return;
     const patch = field === "beneficiaryType" ? { beneficiaryType: value as "individual" | "establishment" | "company" | "association" | "nonprofit" | "representative" } : field === "priority" ? { priority: value as "low" | "normal" | "high" | "urgent" } : { [field]: value.trim() };
@@ -251,6 +265,7 @@ export default function RequestIntakeChatScreen() {
       {conversationId ? <View style={styles.lifecycleCard}><Text style={styles.lifecycleHint}>{isArabic ? "إدارة المسودة وبيانات المحادثة" : "Manage draft and conversation data"}</Text><View style={styles.lifecycleActions}>{state !== "submitted" ? <Pressable disabled={busy} onPress={() => void startNewDraft()} style={[styles.lifecycleButton, busy && styles.disabled]}><Ionicons name="add-circle-outline" size={16} color="#0B5D45" /><Text style={styles.lifecycleText}>{isArabic ? "بدء طلب جديد" : "Start new request"}</Text></Pressable> : null}<Pressable disabled={busy} onPress={confirmDeleteConversation} style={[styles.lifecycleButton, styles.destructiveButton, busy && styles.disabled]}><Ionicons name="trash-outline" size={16} color="#A63D3D" /><Text style={styles.destructiveText}>{isArabic ? "حذف المحادثة" : "Delete conversation"}</Text></Pressable></View></View> : null}
     </ScrollView>
     {recorderState.isRecording ? <View accessibilityLiveRegion="polite" style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row", marginBottom: 8 }]}><Ionicons name="radio" size={15} color="#A63D3D" /><Text style={[styles.noticeText, { flex: 1, writingDirection: direction }]}>{isArabic ? "مدة التسجيل الحالية" : "Current recording duration"}</Text><Text style={[styles.progressValue, { color: "#A63D3D" }]}>{formatRecordingDuration(recorderState.durationMillis)}</Text></View> : null}
+    {recorderState.isRecording ? <Pressable accessibilityRole="button" accessibilityLabel={isArabic ? "إلغاء التسجيل الصوتي" : "Cancel voice recording"} onPress={() => void cancelVoiceInput()} style={[styles.documentAdd, { alignSelf: isArabic ? "flex-end" : "flex-start", backgroundColor: "#FEF2F2", marginBottom: 8 }]}><Ionicons name="close-circle-outline" size={17} color="#A63D3D" /><Text style={[styles.documentAddText, { color: "#A63D3D" }]}>{isArabic ? "إلغاء التسجيل" : "Cancel recording"}</Text></Pressable> : null}
     {!submitted ? <><View style={[styles.composer, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={input} onChangeText={setInput} multiline editable={Boolean(conversationId) && !send.isPending && !recorderState.isRecording} placeholder={isTransactionFlow ? (isArabic ? "اكتب إجابتك أو وصف المعاملة…" : "Type your answer or describe the transaction…") : copy.placeholder} placeholderTextColor="#93A39C" style={[styles.input, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]} /><Pressable accessibilityRole="button" accessibilityLabel={recorderState.isRecording ? (isArabic ? "إيقاف التسجيل وتحويله إلى نص" : "Stop recording and transcribe") : (isArabic ? "بدء إدخال صوتي" : "Start voice input")} disabled={!conversationId || transcribeVoice.isPending || (busy && !recorderState.isRecording)} onPress={() => void toggleVoiceInput()} style={[styles.documentAdd, recorderState.isRecording && { backgroundColor: "#A63D3D" }, (!conversationId || transcribeVoice.isPending || (busy && !recorderState.isRecording)) && styles.disabled]}>{transcribeVoice.isPending ? <ActivityIndicator size="small" color="#0B5D45" /> : <Ionicons name={recorderState.isRecording ? "stop" : "mic-outline"} size={19} color={recorderState.isRecording ? "#FFFFFF" : "#0B5D45"} />}</Pressable><Pressable accessibilityLabel={copy.sending} disabled={!conversationId || send.isPending || recorderState.isRecording} onPress={() => void sendMessage()} style={[styles.send, (!conversationId || send.isPending || recorderState.isRecording) && styles.disabled]}><Ionicons name="send" size={18} color="#FFFFFF" /></Pressable></View>{recorderState.isRecording ? <View style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row", marginTop: 8 }]}><Ionicons name="radio" size={13} color="#A63D3D" /><Text style={[styles.noticeText, { writingDirection: direction }]}>{isArabic ? "جارٍ التسجيل. اضغط إيقاف لتحويل كلامك إلى نص ومراجعته قبل الإرسال." : "Recording. Tap stop to convert your speech to text for review before sending."}</Text></View> : null}{voiceError ? <Text style={styles.documentError}>{voiceError}</Text> : null}<View style={[styles.footerActions, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Pressable onPress={() => void requestHandoff()} disabled={!conversationId || handoff.isPending} style={[styles.handoff, (!conversationId || handoff.isPending) && styles.disabled]}><Ionicons name="person-outline" size={15} color="#0B5D45" /><Text style={styles.handoffText}>{isArabic ? "التحدث مع موظف" : "Talk to staff"}</Text></Pressable><Text style={[styles.resume, { writingDirection: direction }]}>{copy.resume}</Text></View></> : null}
   </View></KeyboardAvoidingView></ScreenContainer>;
 }
