@@ -24,5 +24,7 @@ describe("voice transaction intake", () => {
     expect(screen).toContain("setInput(result.text)");
     expect(screen).toContain("requestRecordingPermissionsAsync");
     expect(screen).toContain("audioFile.delete()");
+    expect(screen).toContain("formatRecordingDuration(recorderState.durationMillis)");
+    expect(screen).toContain("مدة التسجيل الحالية");
   });
 });
