@@ -399,6 +399,20 @@ export const adminSettings = mysqlTable("admin_settings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [foreignKey({ columns: [table.updatedByUserId], foreignColumns: [users.id], name: "admin_settings_updated_by_fk" }).onDelete("set null")]);
 
+/** إصدارات الجوال الظاهرة للإدارة فقط؛ يضاف رابط التنزيل بعد التحقق من اكتمال البناء رسمياً. */
+export const mobileAppReleases = mysqlTable("mobile_app_releases", {
+  id: int("id").autoincrement().primaryKey(),
+  platform: mysqlEnum("platform", ["android_apk", "android_aab", "ios_ipa"]).notNull(),
+  status: mysqlEnum("status", ["pending", "building", "ready", "failed", "archived"]).default("pending").notNull(),
+  versionLabel: varchar("versionLabel", { length: 80 }).notNull(),
+  buildReference: varchar("buildReference", { length: 255 }),
+  downloadUrl: varchar("downloadUrl", { length: 2048 }),
+  releaseNotes: text("releaseNotes"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("mobile_app_releases_status_idx").on(table.status, table.platform), foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "mobile_app_releases_creator_fk" }).onDelete("restrict")]);
+
 export const appointments = mysqlTable("appointments", {
   id: int("id").autoincrement().primaryKey(),
   transactionId: int("transactionId"),

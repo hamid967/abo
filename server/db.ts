@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { adminSettings, aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
+import { adminSettings, aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobileAppReleases, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -812,6 +812,55 @@ export async function updateAdminApprovalAlertSettings(input: { approvalAlertWin
   if (!db) throw new Error("Database not available");
   await db.insert(adminSettings).values({ id: 1, approvalAlertWindowHours: input.approvalAlertWindowHours, updatedByUserId: input.updatedByUserId }).onDuplicateKeyUpdate({ set: { approvalAlertWindowHours: input.approvalAlertWindowHours, updatedByUserId: input.updatedByUserId } });
   return getAdminApprovalAlertSettings();
+}
+
+export type MobileAppReleasePlatform = "android_apk" | "android_aab" | "ios_ipa";
+export type MobileAppReleaseStatus = "pending" | "building" | "ready" | "failed" | "archived";
+
+export async function listMobileAppReleases() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: mobileAppReleases.id,
+    platform: mobileAppReleases.platform,
+    status: mobileAppReleases.status,
+    versionLabel: mobileAppReleases.versionLabel,
+    buildReference: mobileAppReleases.buildReference,
+    downloadUrl: mobileAppReleases.downloadUrl,
+    releaseNotes: mobileAppReleases.releaseNotes,
+    createdAt: mobileAppReleases.createdAt,
+    updatedAt: mobileAppReleases.updatedAt,
+    createdByName: users.name,
+  }).from(mobileAppReleases).leftJoin(users, eq(mobileAppReleases.createdByUserId, users.id)).orderBy(desc(mobileAppReleases.updatedAt));
+}
+
+export async function saveMobileAppRelease(input: {
+  id?: number;
+  platform: MobileAppReleasePlatform;
+  status: MobileAppReleaseStatus;
+  versionLabel: string;
+  buildReference?: string;
+  downloadUrl?: string;
+  releaseNotes?: string;
+  createdByUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = {
+    platform: input.platform,
+    status: input.status,
+    versionLabel: input.versionLabel,
+    buildReference: input.buildReference ?? null,
+    downloadUrl: input.downloadUrl ?? null,
+    releaseNotes: input.releaseNotes ?? null,
+  };
+  if (input.id) {
+    const result = await db.update(mobileAppReleases).set(values).where(eq(mobileAppReleases.id, input.id));
+    if (Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) === 0) throw new Error("MOBILE_RELEASE_NOT_FOUND");
+    return input.id;
+  }
+  const result = await db.insert(mobileAppReleases).values({ ...values, createdByUserId: input.createdByUserId });
+  return Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
 }
 
 export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"], search?: string) {

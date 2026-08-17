@@ -155,6 +155,13 @@
       "when": 1786965270358,
       "tag": "0021_thin_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1786968425777,
+      "tag": "0022_safe_mandarin",
+      "breakpoints": true
     }
   ]
 }

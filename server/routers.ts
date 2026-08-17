@@ -25,6 +25,7 @@ const cloudRecordTypeSchema = z.enum(["transactions", "workspace", "inquiries", 
 const supportedDocumentMimeTypes = ["application/pdf", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"] as const;
 const supportTicketStatusSchema = z.enum(["open", "in_progress", "awaiting_customer", "resolved", "closed"]);
 const knowledgeLanguageSchema = z.enum(["ar", "en"]);
+const verifiedDownloadUrlSchema = z.string().url().max(2048).refine((value) => new URL(value).protocol === "https:", "DOWNLOAD_URL_MUST_USE_HTTPS");
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -666,6 +667,33 @@ export const appRouter = router({
     workload: protectedProcedure.query(async ({ ctx }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
       return db.getTaskWorkloadOverview();
+    }),
+  }),
+  mobileReleases: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      return db.listMobileAppReleases();
+    }),
+    save: protectedProcedure.input(z.object({
+      id: z.number().int().positive().optional(),
+      platform: z.enum(["android_apk", "android_aab", "ios_ipa"]),
+      status: z.enum(["pending", "building", "ready", "failed", "archived"]),
+      versionLabel: z.string().trim().min(1).max(80),
+      buildReference: z.string().trim().max(255).optional(),
+      downloadUrl: verifiedDownloadUrlSchema.optional(),
+      releaseNotes: z.string().trim().max(4000).optional(),
+    }).superRefine((input, context) => {
+      if (input.status === "ready" && !input.downloadUrl) context.addIssue({ code: "custom", message: "READY_RELEASE_REQUIRES_DOWNLOAD_URL", path: ["downloadUrl"] });
+    })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      try {
+        const releaseId = await db.saveMobileAppRelease({ ...input, createdByUserId: ctx.user.id });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: input.id ? "mobile_release.updated" : "mobile_release.created", resourceType: "mobile_release", resourceId: releaseId, metadata: { platform: input.platform, status: input.status, hasDownloadUrl: Boolean(input.downloadUrl) } });
+        return { id: releaseId };
+      } catch (error) {
+        if (error instanceof Error && error.message === "MOBILE_RELEASE_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+        throw error;
+      }
     }),
   }),
   automationOps: router({
