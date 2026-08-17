@@ -1372,6 +1372,26 @@ export async function listApprovalsForResource(userId: number, resourceType: App
   return requests.map((request) => ({ ...request, steps: steps.filter((step) => step.approvalRequestId === request.id) }));
 }
 
+export async function listPendingApprovalsForApprover(userId: number, userRole: ApprovalRole) {
+  const db = await getDb();
+  if (!db) return [] as Array<{ approvalRequestId: string; stepId: number; stepLabel: string; routingMode: "sequential" | "parallel"; createdAt: Date; expiresAt: Date | null; resourceType: ApprovalResourceType; resourceId: string; resourceLabel: string }>;
+  const candidates = await db.select({ request: approvalRequests, step: approvalSteps }).from(approvalSteps).innerJoin(approvalRequests, eq(approvalSteps.approvalRequestId, approvalRequests.id)).where(and(
+    eq(approvalRequests.status, "pending"),
+    eq(approvalSteps.status, "pending"),
+    or(eq(approvalSteps.assignedUserId, userId), eq(approvalSteps.requiredRole, userRole)),
+  )).orderBy(asc(approvalRequests.createdAt), asc(approvalSteps.stepOrder));
+  if (!candidates.length) return [];
+  const requestIds = [...new Set(candidates.map((row) => row.request.id))];
+  const allSteps = await db.select().from(approvalSteps).where(inArray(approvalSteps.approvalRequestId, requestIds)).orderBy(asc(approvalSteps.stepOrder));
+  const taskIds = candidates.filter((row) => row.request.resourceType === "task").map((row) => Number(row.request.resourceId)).filter((id) => Number.isInteger(id) && id > 0);
+  const taskRows = taskIds.length ? await db.select({ id: tasks.id, title: tasks.title, slaDueAt: tasks.slaDueAt, dueAt: tasks.dueAt }).from(tasks).where(inArray(tasks.id, [...new Set(taskIds)])) : [];
+  const taskLabels = new Map(taskRows.map((task) => [String(task.id), { label: task.title, dueAt: task.slaDueAt ?? task.dueAt ?? null }]));
+  return candidates.filter(({ request, step }) => request.routingMode !== "sequential" || allSteps.filter((candidate) => candidate.approvalRequestId === request.id && candidate.stepOrder < step.stepOrder).every((candidate) => ["approved", "skipped"].includes(candidate.status))).map(({ request, step }) => {
+    const task = taskLabels.get(request.resourceId);
+    return { approvalRequestId: request.id, stepId: step.id, stepLabel: step.label, routingMode: request.routingMode, createdAt: request.createdAt, expiresAt: request.expiresAt ?? null, resourceType: request.resourceType, resourceId: request.resourceId, resourceLabel: task?.label ?? (request.resourceType === "task" ? `مهمة #${request.resourceId}` : `طلب خدمة #${request.resourceId}`), dueAt: task?.dueAt ?? null };
+  });
+}
+
 export async function decideApprovalStep(input: { userId: number; userRole: ApprovalRole; approvalRequestId: string; stepId: number; decision: ApprovalDecision; note?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
