@@ -41,7 +41,6 @@ export function useAuth(options?: UseAuthOptions) {
   }, []);
 
   const fetchUser = useCallback(async () => {
-    console.log("[useAuth] fetchUser called");
     try {
       setLoading(true);
       setError(null);
@@ -76,7 +75,7 @@ export function useAuth(options?: UseAuthOptions) {
       await applyNativeUser(cachedUser);
     } catch (err) {
       const authError = err instanceof Error ? err : new Error("Failed to fetch user");
-      console.error("[useAuth] fetchUser error:", authError);
+      console.warn("[useAuth] Unable to refresh the local authentication state");
       setError(authError);
       setUser(null);
       setBiometricUser(null);
@@ -100,8 +99,8 @@ export function useAuth(options?: UseAuthOptions) {
   const logout = useCallback(async () => {
     try {
       await Api.logout();
-    } catch (err) {
-      console.error("[Auth] Logout API call failed:", err);
+    } catch {
+      console.warn("[Auth] Logout request was unavailable; the local session will still be cleared");
     } finally {
       await Auth.removeSessionToken();
       await Auth.clearUserInfo();

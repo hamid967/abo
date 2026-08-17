@@ -106,7 +106,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     <ThemeContext.Provider value={value}>
       <View style={[{ flex: 1 }, themeVariables]}>
         {children}
-        <Animated.View pointerEvents="none" style={[styles.themeTransition, { backgroundColor: transitionColor, opacity: transitionOpacity }]} />
+        <Animated.View style={[styles.themeTransition, { backgroundColor: transitionColor, opacity: transitionOpacity, pointerEvents: "none" }]} />
       </View>
     </ThemeContext.Provider>
   );

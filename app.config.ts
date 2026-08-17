@@ -51,8 +51,8 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "ITSAppUsesNonExemptEncryption": false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -122,7 +122,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission: "يسمح $(PRODUCT_NAME) بالوصول إلى الميكروفون عند استخدام ميزات الصوت.",
       },
     ],
     [

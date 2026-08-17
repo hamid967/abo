@@ -9,6 +9,7 @@ describe("mobile platform compatibility", () => {
   const customerChat = readFileSync("app/chat/abu-mishal.tsx", "utf8");
   const adminChat = readFileSync("app/admin/chats.tsx", "utf8");
   const api = readFileSync("lib/_core/api.ts", "utf8");
+  const authHook = readFileSync("hooks/use-auth.ts", "utf8");
   const taskTracking = readFileSync("app/task-tracking/index.tsx", "utf8");
   const notificationService = readFileSync("lib/notification-service.ts", "utf8");
   const mobilePush = readFileSync("lib/mobile-push.ts", "utf8");
@@ -51,6 +52,9 @@ describe("mobile platform compatibility", () => {
     expect(api).not.toContain('console.log("[API] Full URL:"');
     expect(api).not.toContain("sessionToken.substring");
     expect(api).not.toContain('console.error("[API] getMe failed:"');
+    expect(authHook).not.toContain("sessionToken.substring");
+    expect(authHook).not.toContain('console.error("[useAuth] fetchUser error:"');
+    expect(authHook).not.toContain('console.error("[Auth] Logout API call failed:"');
   });
 
   it("renders SLA badges for task list and Kanban tracking", () => {
