@@ -390,6 +390,15 @@ export const approvalSteps = mysqlTable("approval_steps", {
   foreignKey({ columns: [table.decidedByUserId], foreignColumns: [users.id], name: "approval_steps_decider_fk" }).onDelete("set null"),
 ]);
 
+/** إعداد تشغيلي موحد للمدير والمدير العام؛ لا يُقرأ أو يُحدّث من واجهات العملاء. */
+export const adminSettings = mysqlTable("admin_settings", {
+  id: int("id").primaryKey(),
+  approvalAlertWindowHours: int("approvalAlertWindowHours").default(24).notNull(),
+  updatedByUserId: int("updatedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [foreignKey({ columns: [table.updatedByUserId], foreignColumns: [users.id], name: "admin_settings_updated_by_fk" }).onDelete("set null")]);
+
 export const appointments = mysqlTable("appointments", {
   id: int("id").autoincrement().primaryKey(),
   transactionId: int("transactionId"),

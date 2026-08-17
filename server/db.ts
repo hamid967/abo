@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
+import { adminSettings, aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -793,11 +793,33 @@ export async function softDeleteOwnedDocument(ownerUserId: number, documentId: n
   return { success: true, fileName: document.fileName } as const;
 }
 
+export const approvalAlertWindowHours = [24, 48, 72] as const;
+export type ApprovalAlertWindowHours = (typeof approvalAlertWindowHours)[number];
+
+export async function getAdminApprovalAlertSettings() {
+  const db = await getDb();
+  const fallback = { approvalAlertWindowHours: 24 as ApprovalAlertWindowHours, updatedAt: null as Date | null };
+  if (!db) return fallback;
+  const existing = await db.select().from(adminSettings).where(eq(adminSettings.id, 1)).limit(1);
+  if (existing[0]) return { approvalAlertWindowHours: existing[0].approvalAlertWindowHours as ApprovalAlertWindowHours, updatedAt: existing[0].updatedAt };
+  await db.insert(adminSettings).values({ id: 1, approvalAlertWindowHours: fallback.approvalAlertWindowHours }).onDuplicateKeyUpdate({ set: { id: 1 } });
+  const created = await db.select().from(adminSettings).where(eq(adminSettings.id, 1)).limit(1);
+  return created[0] ? { approvalAlertWindowHours: created[0].approvalAlertWindowHours as ApprovalAlertWindowHours, updatedAt: created[0].updatedAt } : fallback;
+}
+
+export async function updateAdminApprovalAlertSettings(input: { approvalAlertWindowHours: ApprovalAlertWindowHours; updatedByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(adminSettings).values({ id: 1, approvalAlertWindowHours: input.approvalAlertWindowHours, updatedByUserId: input.updatedByUserId }).onDuplicateKeyUpdate({ set: { approvalAlertWindowHours: input.approvalAlertWindowHours, updatedByUserId: input.updatedByUserId } });
+  return getAdminApprovalAlertSettings();
+}
+
 export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"], search?: string) {
   const db = await getDb();
-  if (!db) return { metrics: { total: 0, active: 0, overdue: 0, awaitingDocuments: 0, completed: 0, approvalsExpiringSoon: 0 }, transactions: [] };
+  const approvalAlertSettings = await getAdminApprovalAlertSettings();
+  if (!db) return { metrics: { total: 0, active: 0, overdue: 0, awaitingDocuments: 0, completed: 0, approvalsExpiringSoon: 0, approvalAlertWindowHours: approvalAlertSettings.approvalAlertWindowHours }, transactions: [] };
   const now = new Date();
-  const approvalWindowEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const approvalWindowEndsAt = new Date(now.getTime() + approvalAlertSettings.approvalAlertWindowHours * 60 * 60 * 1000);
   const [grouped, expiringApprovals] = await Promise.all([
     db.select({ status: transactions.status, total: count(transactions.id) }).from(transactions).groupBy(transactions.status),
     db.select({ total: count(approvalRequests.id) }).from(approvalRequests).where(and(
@@ -814,7 +836,7 @@ export async function getSystemTransactionDashboard(status?: (typeof transaction
   const criteria = [status ? eq(transactions.status, status) : undefined, search ? or(like(transactions.referenceNumber, `%${search}%`), like(users.name, `%${search}%`), like(serviceRequests.customerPhone, `%${search}%`), like(organizations.name, `%${search}%`)) : undefined].filter(Boolean);
   const rowQuery = db.select({ id: transactions.id, referenceNumber: transactions.referenceNumber, status: transactions.status, priority: transactions.priority, nextAction: transactions.nextAction, dueAt: transactions.dueAt, updatedAt: transactions.updatedAt, customerUserId: transactions.customerUserId, customerName: users.name, customerPhone: serviceRequests.customerPhone, organizationName: organizations.name, assigneeUserId: transactions.assigneeUserId }).from(transactions).leftJoin(users, eq(transactions.customerUserId, users.id)).leftJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id)).leftJoin(organizations, eq(transactions.organizationId, organizations.id));
   const rows = criteria.length ? await rowQuery.where(and(...criteria)).orderBy(desc(transactions.updatedAt)).limit(100) : await rowQuery.orderBy(desc(transactions.updatedAt)).limit(100);
-  return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed, approvalsExpiringSoon: Number(expiringApprovals[0]?.total ?? 0) }, transactions: rows };
+  return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed, approvalsExpiringSoon: Number(expiringApprovals[0]?.total ?? 0), approvalAlertWindowHours: approvalAlertSettings.approvalAlertWindowHours }, transactions: rows };
 }
 
 export async function getTaskWorkloadOverview() {

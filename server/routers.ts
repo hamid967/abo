@@ -647,6 +647,16 @@ export const appRouter = router({
       await db.createAuditLog({ actorUserId: ctx.user.id, action: input.search ? "admin.dashboard_search" : "admin.dashboard_view", resourceType: "admin_dashboard", metadata: { status: input.status ?? null, searchLength: input.search?.length ?? 0 } });
       return overview;
     }),
+    approvalAlertSettings: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      return db.getAdminApprovalAlertSettings();
+    }),
+    updateApprovalAlertSettings: protectedProcedure.input(z.object({ approvalAlertWindowHours: z.union([z.literal(24), z.literal(48), z.literal(72)]) })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      const result = await db.updateAdminApprovalAlertSettings({ ...input, updatedByUserId: ctx.user.id });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "admin.approval_alert_window_updated", resourceType: "admin_setting", resourceId: "approval_alert_window", metadata: { approvalAlertWindowHours: input.approvalAlertWindowHours } });
+      return result;
+    }),
     workload: protectedProcedure.query(async ({ ctx }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
       return db.getTaskWorkloadOverview();

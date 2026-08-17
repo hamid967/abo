@@ -31,8 +31,22 @@ describe("admin workload overview", () => {
     expect(db).toContain("gt(approvalRequests.expiresAt, now)");
     expect(db).toContain("lt(approvalRequests.expiresAt, approvalWindowEndsAt)");
     expect(router).toContain("canViewSystemDashboard(ctx.user.role)");
-    expect(screen).toContain("موافقات تنتهي خلال 24 ساعة");
+    expect(screen).toContain("موافقات تنتهي خلال {metrics.approvalAlertWindowHours} ساعة");
     expect(screen).toContain("metrics.approvalsExpiringSoon");
     expect(screen).toContain('accessibilityRole="alert"');
+  });
+
+  it("limits the administrative alert window to the supported values and refreshes the counter", () => {
+    expect(db).toContain("approvalAlertWindowHours = [24, 48, 72] as const");
+    expect(db).toContain("getAdminApprovalAlertSettings");
+    expect(db).toContain("updateAdminApprovalAlertSettings");
+    expect(router).toContain("approvalAlertSettings: protectedProcedure");
+    expect(router).toContain("updateApprovalAlertSettings: protectedProcedure");
+    expect(router).toContain("z.union([z.literal(24), z.literal(48), z.literal(72)])");
+    expect(router).toContain("admin.approval_alert_window_updated");
+    expect(screen).toContain("إعدادات تنبيه الموافقين");
+    expect(screen).toContain("approvalAlertWindowOptions = [24, 48, 72] as const");
+    expect(screen).toContain("metrics.approvalAlertWindowHours");
+    expect(screen).toContain("dashboard.refetch()");
   });
 });

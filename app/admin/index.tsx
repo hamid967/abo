@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
@@ -14,6 +14,8 @@ const filters = [
   { label: "متأخرة", value: "overdue" },
   { label: "مكتملة", value: "completed" },
 ] as const;
+
+const approvalAlertWindowOptions = [24, 48, 72] as const;
 
 export default function AdminDashboardScreen() {
   const router = useRouter();
@@ -30,6 +32,7 @@ export default function AdminDashboardScreen() {
   const dashboard = trpc.adminDashboard.overview.useQuery({ status, search }, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
   const workload = trpc.adminDashboard.workload.useQuery(undefined, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
   const audit = trpc.audit.list.useQuery({ limit: 10 }, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
+  const updateApprovalAlertSettings = trpc.adminDashboard.updateApprovalAlertSettings.useMutation();
 
   if (!isAuthenticated) return <AccessState icon="log-in-outline" title="سجّل الدخول أولاً" body="تحتاج لوحة الإدارة إلى جلسة حساب فعلية." action="فتح الحساب" onPress={() => router.push("/account" as never)} />;
   if (account?.role !== "admin" && account?.role !== "super_admin") return <AccessState icon="shield-outline" title="ليس لديك إذن الإدارة" body="تقتصر هذه اللوحة على المدير أو المدير العام." action="العودة للإعدادات" onPress={() => router.back()} />;
@@ -38,6 +41,15 @@ export default function AdminDashboardScreen() {
 
   const { metrics, transactions } = dashboard.data;
   const hasApprovalsAtRisk = metrics.approvalsExpiringSoon > 0;
+  const updateAlertWindow = async (approvalAlertWindowHours: (typeof approvalAlertWindowOptions)[number]) => {
+    if (metrics.approvalAlertWindowHours === approvalAlertWindowHours || updateApprovalAlertSettings.isPending) return;
+    try {
+      await updateApprovalAlertSettings.mutateAsync({ approvalAlertWindowHours });
+      await dashboard.refetch();
+    } catch {
+      Alert.alert("تعذر حفظ الإعداد", "ما قدرنا نحدّث نافذة تنبيه الموافقات الحين. جرّب مرة ثانية.");
+    }
+  };
 
   return <ScreenContainer edges={["top", "bottom", "left", "right"]}><View style={styles.container}>
     <View style={styles.header}>
@@ -56,10 +68,16 @@ export default function AdminDashboardScreen() {
     <View accessibilityRole="alert" style={[styles.approvalRisk, !hasApprovalsAtRisk && styles.approvalRiskClear]}>
       <View style={styles.approvalRiskIcon}><Ionicons name={hasApprovalsAtRisk ? "alarm-outline" : "checkmark-circle-outline"} size={22} color={hasApprovalsAtRisk ? "#B42318" : "#0B5D45"} /></View>
       <View style={styles.approvalRiskCopy}>
-        <Text style={[styles.approvalRiskTitle, !hasApprovalsAtRisk && styles.approvalRiskTitleClear]}>موافقات تنتهي خلال 24 ساعة</Text>
+        <Text style={[styles.approvalRiskTitle, !hasApprovalsAtRisk && styles.approvalRiskTitleClear]}>موافقات تنتهي خلال {metrics.approvalAlertWindowHours} ساعة</Text>
         <Text style={styles.approvalRiskBody}>{hasApprovalsAtRisk ? "تابع مع الموافقين قبل انتهاء مهلة القرار." : "ما فيه موافقات معلقة قرب موعد انتهائها."}</Text>
       </View>
       <Text style={[styles.approvalRiskCount, !hasApprovalsAtRisk && styles.approvalRiskCountClear]}>{metrics.approvalsExpiringSoon}</Text>
+    </View>
+
+    <View style={styles.alertWindowSettings}>
+      <View style={styles.alertWindowHeader}><Ionicons name="options-outline" size={18} color="#0B5D45" /><View style={styles.alertWindowCopy}><Text style={styles.alertWindowTitle}>إعدادات تنبيه الموافقين</Text><Text style={styles.alertWindowBody}>اختر الفترة التي يظهر فيها عدّاد الموافقات القريبة من الانتهاء.</Text></View></View>
+      <View style={styles.alertWindowOptions}>{approvalAlertWindowOptions.map((hours) => <Pressable key={hours} accessibilityRole="button" accessibilityLabel={`نافذة التنبيه ${hours} ساعة`} accessibilityState={{ selected: metrics.approvalAlertWindowHours === hours, disabled: updateApprovalAlertSettings.isPending }} disabled={updateApprovalAlertSettings.isPending} onPress={() => void updateAlertWindow(hours)} style={[styles.alertWindowOption, metrics.approvalAlertWindowHours === hours && styles.alertWindowOptionActive, updateApprovalAlertSettings.isPending && styles.alertWindowOptionDisabled]}><Text style={[styles.alertWindowOptionText, metrics.approvalAlertWindowHours === hours && styles.alertWindowOptionTextActive]}>{hours} ساعة</Text></Pressable>)}</View>
+      {updateApprovalAlertSettings.isPending && <View style={styles.alertWindowSaving}><ActivityIndicator size="small" color="#0B5D45" /><Text style={styles.alertWindowSavingText}>جارٍ حفظ الإعداد...</Text></View>}
     </View>
 
     {workload.data && <View style={styles.workload}>
@@ -107,6 +125,15 @@ const styles = StyleSheet.create({
   approvalRiskTitleClear: { color: "#0B5D45" },
   approvalRiskBody: { color: "#72514C", fontSize: 10, lineHeight: 16, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   approvalRiskCount: { color: "#B42318", fontSize: 28, fontWeight: "900" }, approvalRiskCountClear: { color: "#0B5D45" },
+  alertWindowSettings: { backgroundColor: "#F7FBF8", borderColor: "#DCEADF", borderRadius: 16, borderWidth: 1, marginTop: 10, padding: 13 },
+  alertWindowHeader: { alignItems: "center", flexDirection: "row-reverse", gap: 8 }, alertWindowCopy: { alignItems: "flex-end", flex: 1 },
+  alertWindowTitle: { color: "#0B5D45", fontSize: 12, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
+  alertWindowBody: { color: "#587166", fontSize: 10, lineHeight: 16, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
+  alertWindowOptions: { flexDirection: "row-reverse", gap: 8, marginTop: 12 },
+  alertWindowOption: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#CFE0D3", borderRadius: 10, borderWidth: 1, flex: 1, paddingHorizontal: 7, paddingVertical: 9 },
+  alertWindowOptionActive: { backgroundColor: "#0B5D45", borderColor: "#0B5D45" }, alertWindowOptionDisabled: { opacity: 0.65 },
+  alertWindowOptionText: { color: "#315442", fontSize: 11, fontWeight: "800", writingDirection: "rtl" }, alertWindowOptionTextActive: { color: "#FFFFFF" },
+  alertWindowSaving: { alignItems: "center", flexDirection: "row-reverse", gap: 6, justifyContent: "flex-start", marginTop: 10 }, alertWindowSavingText: { color: "#587166", fontSize: 10, writingDirection: "rtl" },
   workload: { backgroundColor: "#F7FBF8", borderColor: "#DCEADF", borderRadius: 16, borderWidth: 1, marginTop: 15, padding: 13 },
   workloadHeader: { alignItems: "center", flexDirection: "row-reverse", gap: 8 }, workloadCopy: { alignItems: "flex-end", flex: 1 },
   workloadTitle: { color: "#0B5D45", fontSize: 13, fontWeight: "900", writingDirection: "rtl" },
