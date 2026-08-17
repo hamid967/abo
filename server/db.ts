@@ -795,8 +795,18 @@ export async function softDeleteOwnedDocument(ownerUserId: number, documentId: n
 
 export async function getSystemTransactionDashboard(status?: (typeof transactions.$inferSelect)["status"], search?: string) {
   const db = await getDb();
-  if (!db) return { metrics: { total: 0, active: 0, overdue: 0, awaitingDocuments: 0, completed: 0 }, transactions: [] };
-  const grouped = await db.select({ status: transactions.status, total: count(transactions.id) }).from(transactions).groupBy(transactions.status);
+  if (!db) return { metrics: { total: 0, active: 0, overdue: 0, awaitingDocuments: 0, completed: 0, approvalsExpiringSoon: 0 }, transactions: [] };
+  const now = new Date();
+  const approvalWindowEndsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const [grouped, expiringApprovals] = await Promise.all([
+    db.select({ status: transactions.status, total: count(transactions.id) }).from(transactions).groupBy(transactions.status),
+    db.select({ total: count(approvalRequests.id) }).from(approvalRequests).where(and(
+      eq(approvalRequests.status, "pending"),
+      isNotNull(approvalRequests.expiresAt),
+      gt(approvalRequests.expiresAt, now),
+      lt(approvalRequests.expiresAt, approvalWindowEndsAt),
+    )),
+  ]);
   const statusTotals = Object.fromEntries(grouped.map((item) => [item.status, Number(item.total)]));
   const total = Object.values(statusTotals).reduce((sum, value) => sum + value, 0);
   const completed = statusTotals.completed ?? 0;
@@ -804,7 +814,7 @@ export async function getSystemTransactionDashboard(status?: (typeof transaction
   const criteria = [status ? eq(transactions.status, status) : undefined, search ? or(like(transactions.referenceNumber, `%${search}%`), like(users.name, `%${search}%`), like(serviceRequests.customerPhone, `%${search}%`), like(organizations.name, `%${search}%`)) : undefined].filter(Boolean);
   const rowQuery = db.select({ id: transactions.id, referenceNumber: transactions.referenceNumber, status: transactions.status, priority: transactions.priority, nextAction: transactions.nextAction, dueAt: transactions.dueAt, updatedAt: transactions.updatedAt, customerUserId: transactions.customerUserId, customerName: users.name, customerPhone: serviceRequests.customerPhone, organizationName: organizations.name, assigneeUserId: transactions.assigneeUserId }).from(transactions).leftJoin(users, eq(transactions.customerUserId, users.id)).leftJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id)).leftJoin(organizations, eq(transactions.organizationId, organizations.id));
   const rows = criteria.length ? await rowQuery.where(and(...criteria)).orderBy(desc(transactions.updatedAt)).limit(100) : await rowQuery.orderBy(desc(transactions.updatedAt)).limit(100);
-  return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed }, transactions: rows };
+  return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed, approvalsExpiringSoon: Number(expiringApprovals[0]?.total ?? 0) }, transactions: rows };
 }
 
 export async function getTaskWorkloadOverview() {

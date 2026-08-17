@@ -23,4 +23,16 @@ describe("admin workload overview", () => {
     expect(screen).toContain("غير معيّنة");
     expect(screen).not.toContain("member.email");
   });
+
+  it("counts pending approvals that expire in the next twenty-four hours for administrators", () => {
+    expect(db).toContain("approvalsExpiringSoon");
+    expect(db).toContain("approvalWindowEndsAt");
+    expect(db).toContain('eq(approvalRequests.status, "pending")');
+    expect(db).toContain("gt(approvalRequests.expiresAt, now)");
+    expect(db).toContain("lt(approvalRequests.expiresAt, approvalWindowEndsAt)");
+    expect(router).toContain("canViewSystemDashboard(ctx.user.role)");
+    expect(screen).toContain("موافقات تنتهي خلال 24 ساعة");
+    expect(screen).toContain("metrics.approvalsExpiringSoon");
+    expect(screen).toContain('accessibilityRole="alert"');
+  });
 });
