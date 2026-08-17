@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("mobile platform compatibility", () => {
-  const config = readFileSync("app.config.ts", "utf8");
+  const config = readFileSync("app.config.js", "utf8");
   const rootLayout = readFileSync("app/_layout.tsx", "utf8");
   const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
   const callback = readFileSync("app/oauth/callback.tsx", "utf8");
