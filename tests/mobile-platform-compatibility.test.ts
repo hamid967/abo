@@ -16,6 +16,8 @@ describe("mobile platform compatibility", () => {
 
   it("keeps native configuration compatible with iPad, Android documents, and Face ID", () => {
     expect(config).toContain("supportsTablet: true");
+    expect(config).toContain('"expo-asset"');
+    expect(config).toContain('"expo-web-browser"');
     expect(config).toContain('"expo-document-picker"');
     expect(config).toContain('"expo-local-authentication"');
     expect(config).toContain("faceIDPermission");

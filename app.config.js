@@ -55,6 +55,8 @@ const config = {
   },
   plugins: [
     "expo-router",
+    "expo-asset",
+    "expo-web-browser",
     "expo-document-picker",
     ["expo-font", { fonts: ["./assets/fonts/Cairo-Regular.ttf", "./assets/fonts/Cairo-SemiBold.ttf", "./assets/fonts/Cairo-Bold.ttf", "./assets/fonts/Cairo-ExtraBold.ttf"] }],
     ["expo-notifications", { defaultChannel: "government-deadlines", color: "#0B5D45", enableBackgroundRemoteNotifications: true }],
