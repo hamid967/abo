@@ -16,6 +16,7 @@ import { defaultAutomationRules } from "./default-automation-rules";
 import { validateQuietHours } from "./notification-preferences-policy";
 import { checkAssistantRateLimit } from "./assistant-rate-limit";
 import { summarizeDocumentText } from "./document-summary";
+import { getGovernanceGapDashboard } from "./governance-gap-summary";
 
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -656,6 +657,11 @@ export const appRouter = router({
       const result = await db.updateAdminApprovalAlertSettings({ ...input, updatedByUserId: ctx.user.id });
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "admin.approval_alert_window_updated", resourceType: "admin_setting", resourceId: "approval_alert_window", metadata: { approvalAlertWindowHours: input.approvalAlertWindowHours } });
       return result;
+    }),
+    governanceGaps: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "admin.governance_gaps_viewed", resourceType: "governance_gap_dashboard", metadata: { auditBaseline: "phase_zero_2030" } });
+      return getGovernanceGapDashboard();
     }),
     workload: protectedProcedure.query(async ({ ctx }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
