@@ -64,7 +64,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "READ_CALENDAR", "WRITE_CALENDAR"],
     intentFilters: [
       {
         action: "VIEW",
@@ -102,7 +102,15 @@ const config: ExpoConfig = {
       "expo-notifications",
       {
         "defaultChannel": "government-deadlines",
-        "color": "#0B5D45"
+        "color": "#0B5D45",
+        "enableBackgroundRemoteNotifications": true
+      }
+    ],
+    [
+      "expo-calendar",
+      {
+        "calendarPermission": "يسمح $(PRODUCT_NAME) بإضافة مواعيد المهام إلى تقويمك عند اختيارك ذلك.",
+        "remindersPermission": "يسمح $(PRODUCT_NAME) بإضافة تذكيرات المهام إلى جهازك عند اختيارك ذلك."
       }
     ],
     [

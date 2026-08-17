@@ -18,6 +18,13 @@ describe("daily due-date scan", () => {
     expect(dueToday.title).toContain("اليوم");
     expect(dueToday.data.urgency).toBe("today");
   });
+
+  it("formats an SLA task as a task alert with a task resource payload", () => {
+    const taskAlert = getDailyDueNotification({ resourceType: "task", resourceId: "91", recipientUserId: 7, title: "إرفاق المستندات المطلوبة", dueAt: new Date("2026-08-15T10:00:00.000Z") }, now);
+    expect(taskAlert.title).toContain("مهمة");
+    expect(taskAlert.data.resourceType).toBe("task");
+    expect(taskAlert.data.resourceId).toBe("91");
+  });
 });
 
 describe("inactive draft timing", () => {

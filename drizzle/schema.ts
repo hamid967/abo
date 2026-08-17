@@ -39,6 +39,21 @@ export const loginSecurityDevices = mysqlTable("login_security_devices", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [uniqueIndex("login_security_device_unique").on(table.userId, table.deviceFingerprint), index("login_security_device_user_idx").on(table.userId), foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: "login_security_device_user_fk" }).onDelete("cascade")]);
 
+/**
+ * أجهزة إشعارات الدفع: لا يعاد رمز Expo إلى العميل بعد تسجيله، ويرتبط بجلسة حساب واحدة فقط.
+ */
+export const mobilePushDevices = mysqlTable("mobile_push_devices", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull(),
+  deviceId: varchar("deviceId", { length: 128 }).notNull(),
+  platform: mysqlEnum("platform", ["ios", "android"]).notNull(),
+  expoPushToken: varchar("expoPushToken", { length: 255 }).notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("mobile_push_device_user_unique").on(table.userId, table.deviceId), uniqueIndex("mobile_push_device_token_unique").on(table.expoPushToken), index("mobile_push_device_user_enabled_idx").on(table.userId, table.enabled), foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: "mobile_push_device_user_fk" }).onDelete("cascade")]);
+
 export const expoGoOAuthAttempts = mysqlTable("expo_go_oauth_attempts", {
   id: varchar("id", { length: 64 }).primaryKey(),
   proofHash: varchar("proofHash", { length: 64 }).notNull(),
@@ -472,6 +487,10 @@ export const automationRuns = mysqlTable("automation_runs", {
 export const notificationPreferences = mysqlTable("notification_preferences", {
   userId: int("userId").primaryKey(),
   inAppEnabled: boolean("inAppEnabled").default(true).notNull(),
+  pushEnabled: boolean("pushEnabled").default(false).notNull(),
+  taskAlertsEnabled: boolean("taskAlertsEnabled").default(true).notNull(),
+  calendarSyncEnabled: boolean("calendarSyncEnabled").default(false).notNull(),
+  taskReminderMinutes: int("taskReminderMinutes").default(60).notNull(),
   digestFrequency: mysqlEnum("digestFrequency", ["immediate", "daily"]).default("immediate").notNull(),
   quietHoursEnabled: boolean("quietHoursEnabled").default(false).notNull(),
   quietStartHour: int("quietStartHour"),
@@ -482,7 +501,7 @@ export const notificationPreferences = mysqlTable("notification_preferences", {
 export const notificationDeliveryLogs = mysqlTable("notification_delivery_logs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   notificationId: int("notificationId").notNull(),
-  channel: mysqlEnum("channel", ["in_app"]).default("in_app").notNull(),
+  channel: mysqlEnum("channel", ["in_app", "push"]).default("in_app").notNull(),
   status: mysqlEnum("status", ["queued", "delivered", "suppressed", "failed"]).default("queued").notNull(),
   idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull(),
   details: json("details"),

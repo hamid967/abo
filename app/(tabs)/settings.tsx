@@ -12,6 +12,8 @@ import { getReminderPermissionStatus, ReminderPermissionState, requestReminderPe
 import { useLocale } from "@/lib/locale-provider";
 import { useThemeContext } from "@/lib/theme-provider";
 import { BIOMETRIC_LOCK_TIMEOUTS, authenticateBiometric, getBiometricAvailability, getBiometricLockTimeout, isBiometricEnabled, setBiometricEnabled, setBiometricLockTimeout, type BiometricAvailability, type BiometricLockTimeout } from "@/lib/biometric-auth";
+import { getMobilePushDeviceId, prepareMobilePushRegistration } from "@/lib/mobile-push";
+import { trpc } from "@/lib/trpc";
 
 const roles: { value: AppRole; label: string }[] = [{ value: "customer", label: "عميل" }, { value: "employee", label: "موظف" }, { value: "supervisor", label: "مشرف" }];
 
@@ -27,9 +29,36 @@ export default function SettingsScreen() {
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState<string | null>(null);
   const [biometricTimeout, setBiometricTimeout] = useState<BiometricLockTimeout>(0);
+  const [mobilePushMessage, setMobilePushMessage] = useState<string | null>(null);
+  const preferences = trpc.notificationPreferences.get.useQuery(undefined, { enabled: isAuthenticated });
+  const savePreferences = trpc.notificationPreferences.update.useMutation({ onSuccess: () => void preferences.refetch() });
+  const registerPushDevice = trpc.mobilePush.register.useMutation();
+  const deactivatePushDevice = trpc.mobilePush.deactivate.useMutation();
   useEffect(() => { void getReminderPermissionStatus().then(setPermission); }, []);
   useEffect(() => { if (!isAuthenticated) return; void Promise.all([getBiometricAvailability(), isBiometricEnabled(), getBiometricLockTimeout()]).then(([availability, enabled, timeout]) => { setBiometricInfo(availability); setBiometricEnabledState(enabled && availability.available); setBiometricTimeout(timeout); }); }, [isAuthenticated]);
   async function enableReminders() { const granted = await requestReminderPermission(); setPermission(granted ? "granted" : "denied"); }
+  async function setMobilePush(enabled: boolean) {
+    if (!isAuthenticated || savePreferences.isPending || registerPushDevice.isPending) return;
+    const current = preferences.data;
+    if (!current) return;
+    setMobilePushMessage(null);
+    try {
+      if (enabled) {
+        const prepared = await prepareMobilePushRegistration();
+        if (prepared.kind !== "ready") { setMobilePushMessage(prepared.message); return; }
+        await registerPushDevice.mutateAsync(prepared);
+        await savePreferences.mutateAsync({ ...current, pushEnabled: true });
+        setMobilePushMessage("تم ربط هذا الجهاز بتنبيهات المهام. تقدر توقفها من هنا بأي وقت.");
+      } else {
+        const deviceId = await getMobilePushDeviceId();
+        if (deviceId) await deactivatePushDevice.mutateAsync({ deviceId });
+        await savePreferences.mutateAsync({ ...current, pushEnabled: false });
+        setMobilePushMessage("تم إيقاف تنبيهات الدفع لهذا الحساب على الجهاز.");
+      }
+    } catch {
+      setMobilePushMessage("ما قدرنا نحدّث تنبيهات الجوال الآن. جرّب مرة ثانية.");
+    }
+  }
   async function verifyBiometric() { if (!biometricInfo.available || biometricBusy) return; setBiometricBusy(true); setBiometricMessage(null); try { const result = await authenticateBiometric(biometricInfo.label); if (!result.success && !result.cancelled) setBiometricMessage(result.message || "تعذر التحقق من الهوية."); else if (result.success) setBiometricMessage("تم التحقق بنجاح."); } finally { setBiometricBusy(false); } }
   async function changeBiometricTimeout(timeout: BiometricLockTimeout) { await setBiometricLockTimeout(timeout); setBiometricTimeout(timeout); setBiometricMessage("تم حفظ مهلة القفل التلقائي."); }
   function timeoutLabel(timeout: BiometricLockTimeout) { return timeout === 0 ? "عند المغادرة" : timeout < 60_000 ? "فوراً" : timeout < 300_000 ? "دقيقة" : timeout < 900_000 ? "5 دقائق" : timeout < 1_800_000 ? "15 دقيقة" : "30 دقيقة"; }
@@ -46,6 +75,7 @@ export default function SettingsScreen() {
     <View style={styles.section}><Text style={styles.sectionTitle}>المظهر وتجربة البداية</Text><View style={styles.card}><View style={styles.copy}><Text style={styles.cardTitle}>شكل التطبيق</Text><Text style={styles.cardBody}>اختيارك ينحفظ على هذا الجهاز ويتطبق كل ما فتحت التطبيق.</Text><View style={styles.roleChoices}><Pressable accessibilityRole="button" accessibilityLabel="تفعيل الوضع الفاتح" onPress={() => void setColorScheme("light")} style={[styles.roleChoice, colorScheme === "light" && styles.roleChoiceActive]}><Text style={[styles.roleText, colorScheme === "light" && styles.roleTextActive]}>فاتح</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="تفعيل الوضع الداكن" onPress={() => void setColorScheme("dark")} style={[styles.roleChoice, colorScheme === "dark" && styles.roleChoiceActive]}><Text style={[styles.roleText, colorScheme === "dark" && styles.roleTextActive]}>داكن</Text></Pressable></View></View><View style={styles.iconBox}><Ionicons name={colorScheme === "dark" ? "moon-outline" : "sunny-outline"} color="#0B5D45" size={22} /></View></View><Pressable accessibilityRole="button" accessibilityLabel="إعادة تشغيل انترو أبو مشعل" onPress={() => void replayIntro()} style={({ pressed }) => [styles.accountCard, { marginTop: 10 }, pressed && styles.pressed]}><View style={styles.iconBox}><Ionicons name="play-circle-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><Text style={styles.cardTitle}>إعادة تشغيل الانترو</Text><Text style={styles.cardBody}>شاهد مسار أبو مشعل الافتتاحي مرة أخرى في أي وقت.</Text></View><Ionicons name="chevron-back" size={19} color="#0B5D45" /></Pressable></View>
     {!isAuthenticated && <View style={styles.section}><Text style={styles.sectionTitle}>دور المعاينة المحلي</Text><View style={styles.card}><View style={styles.copy}><Text style={styles.cardTitle}>مساحة الاستخدام</Text><Text style={styles.cardBody}>يعمل هذا الاختيار للمعاينة فقط، ويتوقف تلقائياً عند تسجيل الدخول بحساب فعلي.</Text><View style={styles.roleChoices}>{roles.map((item) => <Pressable key={item.value} onPress={() => void setRole(item.value)} style={({ pressed }) => [styles.roleChoice, role === item.value && styles.roleChoiceActive, pressed && styles.pressed]}><Text style={[styles.roleText, role === item.value && styles.roleTextActive]}>{item.label}</Text></Pressable>)}</View>{role !== "customer" && <Pressable onPress={() => router.push("/operations" as never)} style={({ pressed }) => [styles.operationsButton, pressed && styles.pressed]}><Text style={styles.operationsText}>فتح مساحة التشغيل</Text></Pressable>}</View></View></View>}
     <View style={styles.section}><Text style={styles.sectionTitle}>تنبيهات المواعيد</Text><View style={styles.card}><View style={styles.iconBox}><Ionicons name="notifications-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><Text style={styles.cardTitle}>{permission === "granted" ? "التنبيهات مفعّلة" : "ذكّرني بالمواعيد"}</Text><Text style={styles.cardBody}>{reminderMessage}</Text>{permission !== "granted" && permission !== "unsupported" && <Pressable onPress={enableReminders} style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}><Text style={styles.permissionText}>تفعيل الإشعارات</Text></Pressable>}</View></View></View>
+    {isAuthenticated && <View style={styles.section}><Text style={styles.sectionTitle}>تنبيهات المهام على الجوال</Text><View style={styles.securityCard}><View style={styles.iconBox}><Ionicons name="phone-portrait-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><View style={styles.securityTitleRow}><Text style={styles.cardTitle}>إشعارات الدفع للمهام</Text><Switch accessibilityLabel="تفعيل إشعارات الدفع للمهام" value={preferences.data?.pushEnabled ?? false} disabled={preferences.isLoading || savePreferences.isPending || registerPushDevice.isPending || deactivatePushDevice.isPending} onValueChange={(value) => void setMobilePush(value)} trackColor={{ false: "#D7E1DA", true: "#9AC8A8" }} thumbColor={preferences.data?.pushEnabled ? "#0B5D45" : "#FFFFFF"} /></View><Text style={styles.cardBody}>يوصلك تنبيه عند قرب موعد المهمة أو تغيّرها. يحتاج هذا الخيار نسخة تطوير أو إنتاج على الجهاز الفعلي.</Text>{mobilePushMessage ? <Text accessibilityRole="alert" style={styles.securityMessage}>{mobilePushMessage}</Text> : null}</View></View></View>}
     <View style={styles.section}><Text style={styles.sectionTitle}>الخصوصية</Text><View style={styles.card}><View style={styles.iconBox}><Ionicons name="phone-portrait-outline" color="#0B5D45" size={22} /></View><View style={styles.copy}><Text style={styles.cardTitle}>بياناتك على جهازك</Text><Text style={styles.cardBody}>تُحفَظ بيانات المعاينة محلياً على هذا الجهاز. أبو مشعل منصة مستقلة ولا يتصل بمنصة حكومية.</Text></View></View></View>
     <View style={styles.section}><Text style={styles.sectionTitle}>عن التطبيق</Text><View style={styles.aboutRow}><Text style={styles.version}>الإصدار 1.0</Text><Text style={styles.cardTitle}>أبو مشعل · متابعة المعاملات والمهام</Text></View></View>
   </ScrollView></ScreenContainer>;

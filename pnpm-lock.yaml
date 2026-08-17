@@ -59,6 +59,9 @@ importers:
       expo-build-properties:
         specifier: ^1.0.10
         version: 1.0.10(expo@54.0.29)
+      expo-calendar:
+        specifier: ~15.0.8
+        version: 15.0.8(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))
       expo-clipboard:
         specifier: ~8.0.8
         version: 8.0.8(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -3527,6 +3530,12 @@ packages:
     resolution: {integrity: sha512-mFCZbrbrv0AP5RB151tAoRzwRJelqM7bCJzCkxpu+owOyH+p/rFC/q7H5q8B9EpVWj8etaIuszR+gKwohpmu1Q==}
     peerDependencies:
       expo: '*'
+
+  expo-calendar@15.0.8:
+    resolution: {integrity: sha512-i+ojy6zFnWSPb2DYp4L4W4U5iVI+NXnuHr3xysShoV8znNOmixP1TOYuJXt5Lpz+BpHCWseU31gV1E5SSkIKsw==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
 
   expo-clipboard@8.0.8:
     resolution: {integrity: sha512-VKoBkHIpZZDJTB0jRO4/PZskHdMNOEz3P/41tmM6fDuODMpqhvyWK053X0ebspkxiawJX9lX33JXHBCvVsTTOA==}
@@ -9806,6 +9815,11 @@ snapshots:
       ajv: 8.17.1
       expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.19)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       semver: 7.7.3
+
+  expo-calendar@15.0.8(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)):
+    dependencies:
+      expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.19)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
 
   expo-clipboard@8.0.8(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:

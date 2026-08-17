@@ -455,7 +455,7 @@ export const appRouter = router({
   }),
   notificationPreferences: router({
     get: protectedProcedure.query(({ ctx }) => db.getNotificationPreferences(ctx.user.id)),
-    update: protectedProcedure.input(z.object({ inAppEnabled: z.boolean(), digestFrequency: z.enum(["immediate", "daily"]), quietHoursEnabled: z.boolean(), quietStartHour: z.number().int().min(0).max(23).nullable().optional(), quietEndHour: z.number().int().min(0).max(23).nullable().optional() })).mutation(async ({ ctx, input }) => {
+    update: protectedProcedure.input(z.object({ inAppEnabled: z.boolean(), pushEnabled: z.boolean().optional(), taskAlertsEnabled: z.boolean().optional(), calendarSyncEnabled: z.boolean().optional(), taskReminderMinutes: z.number().int().min(5).max(10_080).optional(), digestFrequency: z.enum(["immediate", "daily"]), quietHoursEnabled: z.boolean(), quietStartHour: z.number().int().min(0).max(23).nullable().optional(), quietEndHour: z.number().int().min(0).max(23).nullable().optional() })).mutation(async ({ ctx, input }) => {
       const quiet = validateQuietHours({ enabled: input.quietHoursEnabled, start: input.quietStartHour, end: input.quietEndHour });
       if (!quiet.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid quiet hours" });
       const result = await db.updateNotificationPreferences({ userId: ctx.user.id, ...input, quietStartHour: quiet.start, quietEndHour: quiet.end });
@@ -463,6 +463,19 @@ export const appRouter = router({
       return result;
     }),
     deliveryLog: protectedProcedure.query(({ ctx }) => db.listNotificationDeliveryLogs(ctx.user.id)),
+  }),
+  mobilePush: router({
+    devices: protectedProcedure.query(({ ctx }) => db.listMobilePushDevicesForUser(ctx.user.id)),
+    register: protectedProcedure.input(z.object({ deviceId: z.string().trim().min(16).max(128), platform: z.enum(["ios", "android"]), expoPushToken: z.string().trim().min(20).max(255) })).mutation(async ({ ctx, input }) => {
+      const result = await db.registerMobilePushDevice({ userId: ctx.user.id, ...input });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "mobile_push.device_registered", resourceType: "mobile_push_device", resourceId: result.id, metadata: { platform: input.platform, reused: result.reused } });
+      return result;
+    }),
+    deactivate: protectedProcedure.input(z.object({ deviceId: z.string().trim().min(16).max(128) })).mutation(async ({ ctx, input }) => {
+      const result = await db.deactivateMobilePushDevice({ userId: ctx.user.id, ...input });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "mobile_push.device_deactivated", resourceType: "mobile_push_device", metadata: {} });
+      return result;
+    }),
   }),
   knowledge: router({
     list: protectedProcedure.input(z.object({ language: knowledgeLanguageSchema.default("ar") })).query(({ input }) => db.listPublishedKnowledge(input.language)),

@@ -9,6 +9,9 @@ describe("mobile platform compatibility", () => {
   const customerChat = readFileSync("app/chat/abu-mishal.tsx", "utf8");
   const adminChat = readFileSync("app/admin/chats.tsx", "utf8");
   const api = readFileSync("lib/_core/api.ts", "utf8");
+  const taskTracking = readFileSync("app/task-tracking/index.tsx", "utf8");
+  const notificationService = readFileSync("lib/notification-service.ts", "utf8");
+  const mobilePush = readFileSync("lib/mobile-push.ts", "utf8");
 
   it("keeps native configuration compatible with iPad, Android documents, and Face ID", () => {
     expect(config).toContain("supportsTablet: true");
@@ -16,6 +19,9 @@ describe("mobile platform compatibility", () => {
     expect(config).toContain('"expo-local-authentication"');
     expect(config).toContain("faceIDPermission");
     expect(config).toContain("POST_NOTIFICATIONS");
+    expect(config).toContain('"expo-calendar"');
+    expect(config).toContain("READ_CALENDAR");
+    expect(config).toContain("WRITE_CALENDAR");
   });
 
   it("registers the cross-platform routes and lets long settings content scroll", () => {
@@ -51,5 +57,15 @@ describe("mobile platform compatibility", () => {
     const workspace = readFileSync("app/workspace/index.tsx", "utf8");
     expect(workspace).toContain("SlaBadge");
     expect(workspace).toContain("dueAt={task.dueDate}");
+  });
+
+  it("keeps task alerts, calendar sync, and push navigation within native-only paths", () => {
+    expect(rootLayout).toContain("MobileNotificationObserver");
+    expect(settings).toContain("إشعارات الدفع للمهام");
+    expect(taskTracking).toContain("syncTaskSlaAlerts");
+    expect(taskTracking).toContain("syncTaskToCalendar");
+    expect(notificationService).toContain("TASK_ALERTS_CHANNEL_ID");
+    expect(notificationService).toContain('url: "/task-tracking"');
+    expect(mobilePush).toContain("Platform.OS !== \"ios\" && Platform.OS !== \"android\"");
   });
 });

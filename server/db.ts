@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -199,7 +199,7 @@ export async function canUseOrganization(userId: number, organizationId: number)
 }
 
 export type DailyDueCandidate = {
-  resourceType: "request" | "transaction" | "appointment";
+  resourceType: "request" | "transaction" | "appointment" | "task";
   resourceId: string;
   recipientUserId: number;
   title: string;
@@ -209,15 +209,17 @@ export type DailyDueCandidate = {
 export async function listDailyDueCandidates(before: Date): Promise<DailyDueCandidate[]> {
   const db = await getDb();
   if (!db) return [];
-  const [requestRows, transactionRows, appointmentRows] = await Promise.all([
+  const [requestRows, transactionRows, appointmentRows, taskRows] = await Promise.all([
     db.select({ id: serviceRequests.id, recipientUserId: serviceRequests.customerUserId, title: serviceRequests.title, dueAt: serviceRequests.desiredDueAt }).from(serviceRequests).where(and(isNotNull(serviceRequests.desiredDueAt), isNull(serviceRequests.deletedAt), notInArray(serviceRequests.status, ["cancelled"]) as never, lt(serviceRequests.desiredDueAt, before))),
     db.select({ id: transactions.id, recipientUserId: transactions.customerUserId, referenceNumber: transactions.referenceNumber, dueAt: transactions.dueAt }).from(transactions).where(and(isNotNull(transactions.dueAt), isNull(transactions.deletedAt), notInArray(transactions.status, ["completed", "rejected", "cancelled", "archived"]) as never, lt(transactions.dueAt, before))),
     db.select({ id: appointments.id, recipientUserId: appointments.customerUserId, title: appointments.title, dueAt: appointments.startsAt }).from(appointments).where(and(eq(appointments.status, "scheduled"), lt(appointments.startsAt, before))),
+    db.select({ id: tasks.id, ownerUserId: tasks.ownerUserId, assigneeUserId: tasks.assigneeUserId, title: tasks.title, dueAt: sql<Date | null>`coalesce(${tasks.slaDueAt}, ${tasks.dueAt})` }).from(tasks).where(and(or(isNotNull(tasks.slaDueAt), isNotNull(tasks.dueAt)), notInArray(tasks.status, ["completed", "cancelled"]), lt(sql`coalesce(${tasks.slaDueAt}, ${tasks.dueAt})`, before))),
   ]);
   return [
     ...requestRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "request" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.title, dueAt: row.dueAt })),
     ...transactionRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "transaction" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.referenceNumber || `معاملة #${row.id}`, dueAt: row.dueAt })),
     ...appointmentRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).map((row) => ({ resourceType: "appointment" as const, resourceId: String(row.id), recipientUserId: row.recipientUserId, title: row.title, dueAt: row.dueAt })),
+    ...taskRows.filter((row): row is typeof row & { dueAt: Date } => row.dueAt instanceof Date).flatMap((row) => [...new Set([row.ownerUserId, row.assigneeUserId].filter((recipient): recipient is number => typeof recipient === "number"))].map((recipientUserId) => ({ resourceType: "task" as const, resourceId: String(row.id), recipientUserId, title: row.title, dueAt: row.dueAt }))),
   ];
 }
 
@@ -494,11 +496,72 @@ export async function getNotificationPreferences(userId: number) {
   return created[0];
 }
 
-export async function updateNotificationPreferences(input: { userId: number; inAppEnabled: boolean; digestFrequency: "immediate" | "daily"; quietHoursEnabled: boolean; quietStartHour?: number | null; quietEndHour?: number | null }) {
+export async function updateNotificationPreferences(input: { userId: number; inAppEnabled: boolean; pushEnabled?: boolean; taskAlertsEnabled?: boolean; calendarSyncEnabled?: boolean; taskReminderMinutes?: number; digestFrequency: "immediate" | "daily"; quietHoursEnabled: boolean; quietStartHour?: number | null; quietEndHour?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(notificationPreferences).values({ ...input, quietStartHour: input.quietHoursEnabled ? input.quietStartHour ?? 22 : null, quietEndHour: input.quietHoursEnabled ? input.quietEndHour ?? 7 : null }).onDuplicateKeyUpdate({ set: { inAppEnabled: input.inAppEnabled, digestFrequency: input.digestFrequency, quietHoursEnabled: input.quietHoursEnabled, quietStartHour: input.quietHoursEnabled ? input.quietStartHour ?? 22 : null, quietEndHour: input.quietHoursEnabled ? input.quietEndHour ?? 7 : null } });
+  const current = await getNotificationPreferences(input.userId);
+  const taskReminderMinutes = input.taskReminderMinutes ?? current.taskReminderMinutes;
+  const pushEnabled = input.pushEnabled ?? current.pushEnabled;
+  const taskAlertsEnabled = input.taskAlertsEnabled ?? current.taskAlertsEnabled;
+  const calendarSyncEnabled = input.calendarSyncEnabled ?? current.calendarSyncEnabled;
+  const quietStartHour = input.quietHoursEnabled ? input.quietStartHour ?? 22 : null;
+  const quietEndHour = input.quietHoursEnabled ? input.quietEndHour ?? 7 : null;
+  await db.insert(notificationPreferences).values({ userId: input.userId, inAppEnabled: input.inAppEnabled, pushEnabled, taskAlertsEnabled, calendarSyncEnabled, taskReminderMinutes, digestFrequency: input.digestFrequency, quietHoursEnabled: input.quietHoursEnabled, quietStartHour, quietEndHour }).onDuplicateKeyUpdate({ set: { inAppEnabled: input.inAppEnabled, pushEnabled, taskAlertsEnabled, calendarSyncEnabled, taskReminderMinutes, digestFrequency: input.digestFrequency, quietHoursEnabled: input.quietHoursEnabled, quietStartHour, quietEndHour } });
   return getNotificationPreferences(input.userId);
+}
+
+export async function registerMobilePushDevice(input: { userId: number; deviceId: string; platform: "ios" | "android"; expoPushToken: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // A token can only belong to one active account. Remove a previous account link
+  // so a signed-out account cannot keep receiving alerts on the shared device.
+  await db.delete(mobilePushDevices).where(and(eq(mobilePushDevices.expoPushToken, input.expoPushToken), ne(mobilePushDevices.userId, input.userId)));
+  const existing = await db.select({ id: mobilePushDevices.id }).from(mobilePushDevices).where(and(eq(mobilePushDevices.userId, input.userId), eq(mobilePushDevices.deviceId, input.deviceId))).limit(1);
+  if (existing[0]) {
+    await db.update(mobilePushDevices).set({ platform: input.platform, expoPushToken: input.expoPushToken, enabled: true, lastSeenAt: new Date() }).where(eq(mobilePushDevices.id, existing[0].id));
+    return { id: existing[0].id, reused: true } as const;
+  }
+  const id = crypto.randomUUID();
+  await db.insert(mobilePushDevices).values({ id, ...input, enabled: true, lastSeenAt: new Date() });
+  return { id, reused: false } as const;
+}
+
+export async function deactivateMobilePushDevice(input: { userId: number; deviceId: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(mobilePushDevices).set({ enabled: false, lastSeenAt: new Date() }).where(and(eq(mobilePushDevices.userId, input.userId), eq(mobilePushDevices.deviceId, input.deviceId)));
+  return { success: true } as const;
+}
+
+export async function listMobilePushDevicesForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  // Deliberately never select expoPushToken for a client response.
+  return db.select({ id: mobilePushDevices.id, deviceId: mobilePushDevices.deviceId, platform: mobilePushDevices.platform, enabled: mobilePushDevices.enabled, lastSeenAt: mobilePushDevices.lastSeenAt, createdAt: mobilePushDevices.createdAt }).from(mobilePushDevices).where(eq(mobilePushDevices.userId, userId)).orderBy(desc(mobilePushDevices.lastSeenAt)).limit(20);
+}
+
+export async function listActivePushTokensForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: mobilePushDevices.id, expoPushToken: mobilePushDevices.expoPushToken, platform: mobilePushDevices.platform }).from(mobilePushDevices).where(and(eq(mobilePushDevices.userId, userId), eq(mobilePushDevices.enabled, true))).limit(10);
+}
+
+export async function disableMobilePushDeviceById(id: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(mobilePushDevices).set({ enabled: false }).where(eq(mobilePushDevices.id, id));
+}
+
+export async function createPushDeliveryLog(input: { notificationId: number; status: "queued" | "delivered" | "suppressed" | "failed"; idempotencyKey: string; details?: unknown; deliveredAt?: Date }) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(notificationDeliveryLogs).values({ id: crypto.randomUUID(), ...input, channel: "push" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Duplicate") || message.includes("ER_DUP_ENTRY")) return;
+    throw error;
+  }
 }
 
 export async function listNotificationDeliveryLogs(userId: number) {

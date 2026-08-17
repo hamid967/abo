@@ -1,4 +1,5 @@
 import * as db from "./db";
+import { createTaskMobileNotification } from "./mobile-push-service";
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 
@@ -14,7 +15,7 @@ export function getSaudiDayWindow(now = new Date()) {
 export function getDailyDueNotification(candidate: db.DailyDueCandidate, now = new Date()) {
   const { start } = getSaudiDayWindow(now);
   const overdue = candidate.dueAt.getTime() < start.getTime();
-  const labels = { request: "طلب", transaction: "معاملة", appointment: "موعد" };
+  const labels = { request: "طلب", transaction: "معاملة", appointment: "موعد", task: "مهمة" };
   const kind = labels[candidate.resourceType];
   return {
     title: overdue ? `تذكير: ${kind} متأخر` : `تذكير: ${kind} اليوم`,
@@ -61,7 +62,9 @@ export async function runDailyDueScan(now = new Date()) {
     if (!reserved) { skipped += 1; continue; }
     try {
       const notification = getDailyDueNotification(candidate, now);
-      const notificationId = await db.createInAppNotification({ recipientUserId: candidate.recipientUserId, ...notification });
+      const delivered = await createTaskMobileNotification({ recipientUserId: candidate.recipientUserId, ...notification, taskId: candidate.resourceType === "task" ? Number(candidate.resourceId) : undefined });
+      const notificationId = delivered.notificationId;
+      if (!notificationId) throw new Error("DAILY_DUE_NOTIFICATION_NOT_CREATED");
       await db.finalizeDailyDueNotification({ ...key, notificationId: Number(notificationId) });
       created += 1;
     } catch (error) {
