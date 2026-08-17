@@ -136,6 +136,7 @@ export default function RootLayout() {
                 <Stack.Screen name="workspace/index" />
                 <Stack.Screen name="task-tracking/index" />
                 <Stack.Screen name="approvals/inbox" />
+                <Stack.Screen name="updates/index" />
                 <Stack.Screen name="operations/index" />
                 <Stack.Screen name="inquiries/index" />
                 <Stack.Screen name="notifications/index" />
@@ -146,6 +147,7 @@ export default function RootLayout() {
                 <Stack.Screen name="chat/abu-mishal" />
                 <Stack.Screen name="admin/chats" />
                 <Stack.Screen name="admin/playbooks" />
+                <Stack.Screen name="admin/official-updates" />
                 <Stack.Screen name="document-summary/index" />
                 <Stack.Screen name="security/activity" />
                 <Stack.Screen name="today/index" />

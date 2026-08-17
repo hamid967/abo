@@ -109,6 +109,92 @@ export const governmentServices = mysqlTable("government_services", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("government_services_entity_idx").on(table.entityId), foreignKey({ columns: [table.entityId], foreignColumns: [governmentEntities.id], name: "government_services_entity_fk" }).onDelete("restrict")]);
 
+/** مصادر رسمية فقط. لا يسمح الجمع أو النشر من مصدر غير معتمد. */
+export const officialSources = mysqlTable("official_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  authorityNameAr: varchar("authorityNameAr", { length: 255 }).notNull(),
+  authorityNameEn: varchar("authorityNameEn", { length: 255 }),
+  sourceName: varchar("sourceName", { length: 255 }).notNull(),
+  sourceType: mysqlEnum("sourceType", ["rss", "api", "webhook"]).notNull(),
+  officialUrl: varchar("officialUrl", { length: 2048 }).notNull(),
+  feedUrl: varchar("feedUrl", { length: 2048 }),
+  collectionMethod: mysqlEnum("collectionMethod", ["rss", "api", "webhook"]).notNull(),
+  verificationStatus: mysqlEnum("verificationStatus", ["pending", "verified", "disabled"]).default("pending").notNull(),
+  collectionFrequency: mysqlEnum("collectionFrequency", ["manual", "daily", "hourly"]).default("daily").notNull(),
+  lastCheckedAt: timestamp("lastCheckedAt"),
+  lastSuccessAt: timestamp("lastSuccessAt"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("official_sources_feed_unique").on(table.feedUrl), index("official_sources_active_idx").on(table.isActive, table.verificationStatus)]);
+
+/** يحتفظ بالنص الأصلي والرابط الرسمي؛ لا تظهر المادة للمستخدم قبل النشر المعتمد. */
+export const regulatoryUpdates = mysqlTable("regulatory_updates", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceId: int("sourceId").notNull(),
+  externalReference: varchar("externalReference", { length: 1024 }),
+  titleAr: varchar("titleAr", { length: 1024 }),
+  titleEn: varchar("titleEn", { length: 1024 }),
+  originalTitle: varchar("originalTitle", { length: 1024 }).notNull(),
+  officialUrl: varchar("officialUrl", { length: 2048 }).notNull(),
+  updateType: mysqlEnum("updateType", ["system", "regulation", "decision", "circular", "procedural_guide", "platform_update", "deadline", "new_requirement", "fees", "penalty", "new_service", "service_change", "technical_alert", "general_news", "other"]).default("general_news").notNull(),
+  publishedAt: timestamp("publishedAt"),
+  effectiveFrom: timestamp("effectiveFrom"),
+  effectiveTo: timestamp("effectiveTo"),
+  originalContent: text("originalContent").notNull(),
+  summaryAr: text("summaryAr"),
+  summaryEn: text("summaryEn"),
+  status: mysqlEnum("status", ["collected", "duplicate", "processing", "needs_review", "verified", "published", "rejected", "archived"]).default("collected").notNull(),
+  importance: mysqlEnum("importance", ["low", "normal", "high", "critical"]).default("normal").notNull(),
+  checksum: varchar("checksum", { length: 64 }).notNull(),
+  previousVersionId: int("previousVersionId"),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewNote: text("reviewNote"),
+  publishedByUserId: int("publishedByUserId"),
+  publishedAtSystem: timestamp("publishedAtSystem"),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("regulatory_updates_source_checksum_unique").on(table.sourceId, table.checksum),
+  index("regulatory_updates_public_idx").on(table.status, table.publishedAt, table.importance),
+  index("regulatory_updates_source_status_idx").on(table.sourceId, table.status, table.createdAt),
+  foreignKey({ columns: [table.sourceId], foreignColumns: [officialSources.id], name: "regulatory_updates_source_fk" }).onDelete("restrict"),
+  foreignKey({ columns: [table.previousVersionId], foreignColumns: [table.id], name: "regulatory_updates_previous_version_fk" }).onDelete("set null"),
+  foreignKey({ columns: [table.reviewedByUserId], foreignColumns: [users.id], name: "regulatory_updates_reviewer_fk" }).onDelete("set null"),
+  foreignKey({ columns: [table.publishedByUserId], foreignColumns: [users.id], name: "regulatory_updates_publisher_fk" }).onDelete("set null"),
+]);
+
+export const updateImpacts = mysqlTable("update_impacts", {
+  id: int("id").autoincrement().primaryKey(),
+  updateId: int("updateId").notNull(),
+  audienceType: varchar("audienceType", { length: 120 }),
+  businessActivity: varchar("businessActivity", { length: 255 }),
+  impactedServiceId: int("impactedServiceId"),
+  impactLevel: mysqlEnum("impactLevel", ["low", "normal", "high", "critical"]).default("normal").notNull(),
+  impactSummary: text("impactSummary"),
+  requiredAction: text("requiredAction"),
+  actionDeadline: timestamp("actionDeadline"),
+  confidence: int("confidence"),
+  reviewedByUserId: int("reviewedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("update_impacts_update_idx").on(table.updateId), foreignKey({ columns: [table.updateId], foreignColumns: [regulatoryUpdates.id], name: "update_impacts_update_fk" }).onDelete("cascade"), foreignKey({ columns: [table.impactedServiceId], foreignColumns: [governmentServices.id], name: "update_impacts_service_fk" }).onDelete("set null"), foreignKey({ columns: [table.reviewedByUserId], foreignColumns: [users.id], name: "update_impacts_reviewer_fk" }).onDelete("set null")]);
+
+/** اشتراك المستخدم محصور بحسابه ولا يؤدي تلقائياً إلى إرسال خارجي قبل اعتماد التحديث. */
+export const updateSubscriptions = mysqlTable("update_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  sourceId: int("sourceId"),
+  updateType: varchar("updateType", { length: 64 }),
+  activity: varchar("activity", { length: 255 }),
+  city: varchar("city", { length: 120 }),
+  notificationChannel: mysqlEnum("notificationChannel", ["in_app", "push"]).default("in_app").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("update_subscriptions_user_active_idx").on(table.userId, table.isActive), foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: "update_subscriptions_user_fk" }).onDelete("cascade"), foreignKey({ columns: [table.sourceId], foreignColumns: [officialSources.id], name: "update_subscriptions_source_fk" }).onDelete("set null")]);
+
 export const servicePlaybooks = mysqlTable("service_playbooks", {
   id: varchar("id", { length: 36 }).primaryKey(),
   serviceId: int("serviceId").notNull(),

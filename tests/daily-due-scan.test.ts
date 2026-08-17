@@ -1,8 +1,15 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getDailyDueNotification, getSaudiDayWindow, shouldPromptInactiveDraft } from "../server/daily-due-scan";
 
 describe("daily due-date scan", () => {
   const now = new Date("2026-08-15T07:00:00.000Z");
+
+  it("يربط الجمع الرسمي المتحقق بالفحص اليومي دون كشف تفاصيل الفشل", () => {
+    const source = readFileSync("server/daily-due-scan.ts", "utf8");
+    expect(source).toContain("collectVerifiedOfficialSources");
+    expect(source).not.toContain("stack: error.stack");
+  });
 
   it("uses the Saudi calendar day for an idempotency key", () => {
     const window = getSaudiDayWindow(now);

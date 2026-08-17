@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -13,6 +13,7 @@ import { canAttachDraftDocument } from "./draft-document-policy";
 import { handoffPriorityForReason, handoffSubject } from "./handoff-policy";
 import { classifyLoginSecurity, formatLoginSecurityAlert, normalizeDeviceId } from "./login-security";
 import { dueAtForPlaybookStep, playbookTaskSourceKey, resolveGeneratedTaskAssignee, shouldGenerateTaskFromPlaybookStep, slaDueAtForPlaybookStep, slaMinutesForPlaybookStep } from "./playbook-task-policy";
+import { isOfficialGovernmentUrl, mayTransitionRegulatoryUpdate, parseOfficialRss, type OfficialUpdateImportance, type OfficialUpdateType, ZATCA_OFFICIAL_SOURCE } from "./official-update-policy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1420,4 +1421,186 @@ export async function updateTrackedTaskStatus(input: { userId: number; taskId: n
   if (blockedBy) return { updated: false, blockedBy };
   const result = await db.update(tasks).set({ status: input.status, completedAt: input.status === "completed" ? new Date() : null }).where(and(eq(tasks.id, input.taskId), or(eq(tasks.ownerUserId, input.userId), eq(tasks.assigneeUserId, input.userId))));
   return { updated: Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0, blockedBy: undefined };
+}
+
+export type RegulatoryUpdateStatus = "collected" | "duplicate" | "processing" | "needs_review" | "verified" | "published" | "rejected" | "archived";
+
+export async function ensureInitialZatcaOfficialSource(actorUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select({ id: officialSources.id }).from(officialSources).where(eq(officialSources.feedUrl, ZATCA_OFFICIAL_SOURCE.feedUrl)).limit(1);
+  if (existing[0]) return { id: existing[0].id, created: false };
+  const result = await db.insert(officialSources).values({
+    ...ZATCA_OFFICIAL_SOURCE,
+    sourceType: "rss",
+    collectionMethod: "rss",
+    verificationStatus: "verified",
+    collectionFrequency: "daily",
+    isActive: true,
+  });
+  const id = Number(result[0].insertId);
+  await createAuditLog({ actorUserId, action: "official_source.initial_zatca_created", resourceType: "official_source", resourceId: id, metadata: { feedUrl: ZATCA_OFFICIAL_SOURCE.feedUrl } });
+  return { id, created: true };
+}
+
+export async function listOfficialSourcesForAdmin() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(officialSources).orderBy(desc(officialSources.updatedAt));
+}
+
+export async function collectOfficialSource(input: { actorUserId?: number; sourceId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const sourceRows = await db.select().from(officialSources).where(eq(officialSources.id, input.sourceId)).limit(1);
+  const source = sourceRows[0];
+  if (!source || !source.isActive || source.verificationStatus !== "verified" || source.collectionMethod !== "rss" || !source.feedUrl) throw new Error("OFFICIAL_SOURCE_NOT_COLLECTABLE");
+  if (!isOfficialGovernmentUrl(source.officialUrl) || !isOfficialGovernmentUrl(source.feedUrl)) throw new Error("OFFICIAL_SOURCE_URL_REJECTED");
+
+  try {
+    const response = await fetch(source.feedUrl, { headers: { Accept: "application/rss+xml, application/xml, text/xml" }, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`OFFICIAL_SOURCE_FETCH_${response.status}`);
+    const xml = await response.text();
+    const items = parseOfficialRss(xml);
+    let created = 0;
+    let duplicates = 0;
+    for (const item of items) {
+      const existing = await db.select({ id: regulatoryUpdates.id }).from(regulatoryUpdates).where(and(eq(regulatoryUpdates.sourceId, source.id), eq(regulatoryUpdates.checksum, item.checksum))).limit(1);
+      if (existing[0]) {
+        duplicates += 1;
+        continue;
+      }
+      await db.insert(regulatoryUpdates).values({
+        sourceId: source.id,
+        externalReference: item.link,
+        originalTitle: item.title,
+        officialUrl: item.link,
+        publishedAt: item.publishedAt,
+        originalContent: item.description || item.title,
+        updateType: item.updateType,
+        importance: item.importance,
+        checksum: item.checksum,
+        status: "needs_review",
+      });
+      created += 1;
+    }
+    const now = new Date();
+    await db.update(officialSources).set({ lastCheckedAt: now, lastSuccessAt: now }).where(eq(officialSources.id, source.id));
+    await createAuditLog({ actorUserId: input.actorUserId, action: "official_source.collected", resourceType: "official_source", resourceId: source.id, metadata: { created, duplicates, itemCount: items.length } });
+    return { created, duplicates, itemCount: items.length };
+  } catch (error) {
+    await db.update(officialSources).set({ lastCheckedAt: new Date() }).where(eq(officialSources.id, source.id));
+    await createAuditLog({ actorUserId: input.actorUserId, action: "official_source.collection_failed", resourceType: "official_source", resourceId: source.id, metadata: { reason: error instanceof Error ? error.message.slice(0, 160) : "unknown" } });
+    throw error;
+  }
+}
+
+export async function collectVerifiedOfficialSources(actorUserId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const sources = await db.select({ id: officialSources.id }).from(officialSources).where(and(
+    eq(officialSources.isActive, true),
+    eq(officialSources.verificationStatus, "verified"),
+    eq(officialSources.collectionMethod, "rss"),
+  ));
+  let created = 0;
+  let duplicates = 0;
+  const failures: number[] = [];
+  for (const source of sources) {
+    try {
+      const result = await collectOfficialSource({ actorUserId, sourceId: source.id });
+      created += result.created;
+      duplicates += result.duplicates;
+    } catch {
+      failures.push(source.id);
+    }
+  }
+  return { sourceCount: sources.length, created, duplicates, failedSourceIds: failures };
+}
+
+export async function listRegulatoryUpdatesForAdmin(status?: RegulatoryUpdateStatus) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ update: regulatoryUpdates, sourceName: officialSources.sourceName, authorityNameAr: officialSources.authorityNameAr })
+    .from(regulatoryUpdates).innerJoin(officialSources, eq(regulatoryUpdates.sourceId, officialSources.id))
+    .where(status ? eq(regulatoryUpdates.status, status) : undefined)
+    .orderBy(desc(regulatoryUpdates.createdAt)).limit(100);
+  return rows.map((row) => ({ ...row.update, sourceName: row.sourceName, authorityNameAr: row.authorityNameAr }));
+}
+
+export async function listPublishedRegulatoryUpdates() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ update: regulatoryUpdates, sourceName: officialSources.sourceName, authorityNameAr: officialSources.authorityNameAr })
+    .from(regulatoryUpdates).innerJoin(officialSources, eq(regulatoryUpdates.sourceId, officialSources.id))
+    .where(and(eq(regulatoryUpdates.status, "published"), isNull(regulatoryUpdates.deletedAt)))
+    .orderBy(desc(regulatoryUpdates.publishedAtSystem), desc(regulatoryUpdates.publishedAt)).limit(100);
+  return rows.map((row) => ({
+    id: row.update.id,
+    titleAr: row.update.titleAr,
+    titleEn: row.update.titleEn,
+    originalTitle: row.update.originalTitle,
+    officialUrl: row.update.officialUrl,
+    updateType: row.update.updateType,
+    importance: row.update.importance,
+    summaryAr: row.update.summaryAr,
+    summaryEn: row.update.summaryEn,
+    publishedAt: row.update.publishedAt,
+    effectiveFrom: row.update.effectiveFrom,
+    authorityNameAr: row.authorityNameAr,
+    sourceName: row.sourceName,
+    publishedAtSystem: row.update.publishedAtSystem,
+  }));
+}
+
+export async function reviewRegulatoryUpdate(input: { actorUserId: number; updateId: number; action: "verify" | "publish" | "reject"; note?: string; titleAr?: string; titleEn?: string; summaryAr?: string; summaryEn?: string; updateType?: OfficialUpdateType; importance?: OfficialUpdateImportance }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(regulatoryUpdates).where(eq(regulatoryUpdates.id, input.updateId)).limit(1);
+  const update = rows[0];
+  if (!update || update.deletedAt) throw new Error("REGULATORY_UPDATE_NOT_FOUND");
+  const now = new Date();
+  const patch = {
+    titleAr: input.titleAr?.trim() || update.titleAr,
+    titleEn: input.titleEn?.trim() || update.titleEn,
+    summaryAr: input.summaryAr?.trim() || update.summaryAr,
+    summaryEn: input.summaryEn?.trim() || update.summaryEn,
+    updateType: input.updateType ?? update.updateType,
+    importance: input.importance ?? update.importance,
+    reviewNote: input.note?.trim() || null,
+    reviewedByUserId: input.actorUserId,
+    reviewedAt: now,
+  };
+  if (input.action === "verify") {
+    if (!mayTransitionRegulatoryUpdate(update.status, input.action)) throw new Error("REGULATORY_UPDATE_REVIEW_STATE_INVALID");
+    await db.update(regulatoryUpdates).set({ ...patch, status: "verified" }).where(eq(regulatoryUpdates.id, update.id));
+  } else if (input.action === "publish") {
+    if (!mayTransitionRegulatoryUpdate(update.status, input.action)) throw new Error("REGULATORY_UPDATE_NOT_VERIFIED");
+    await db.update(regulatoryUpdates).set({ ...patch, status: "published", publishedByUserId: input.actorUserId, publishedAtSystem: now }).where(eq(regulatoryUpdates.id, update.id));
+  } else {
+    if (!mayTransitionRegulatoryUpdate(update.status, input.action)) throw new Error("REGULATORY_UPDATE_REVIEW_STATE_INVALID");
+    await db.update(regulatoryUpdates).set({ ...patch, status: "rejected" }).where(eq(regulatoryUpdates.id, update.id));
+  }
+  await createAuditLog({ actorUserId: input.actorUserId, action: `regulatory_update.${input.action}`, resourceType: "regulatory_update", resourceId: update.id, metadata: { priorStatus: update.status, updateType: patch.updateType, importance: patch.importance } });
+  return { status: input.action === "verify" ? "verified" : input.action === "publish" ? "published" : "rejected" };
+}
+
+export async function listUpdateSubscriptionsForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(updateSubscriptions).where(eq(updateSubscriptions.userId, userId)).orderBy(desc(updateSubscriptions.updatedAt));
+}
+
+export async function createUpdateSubscription(input: { userId: number; sourceId?: number; updateType?: string; activity?: string; city?: string; notificationChannel: "in_app" | "push" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(updateSubscriptions).values({ ...input, isActive: true });
+  return { id: Number(result[0].insertId) };
+}
+
+export async function setUpdateSubscriptionActive(input: { userId: number; subscriptionId: number; isActive: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.update(updateSubscriptions).set({ isActive: input.isActive }).where(and(eq(updateSubscriptions.id, input.subscriptionId), eq(updateSubscriptions.userId, input.userId)));
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
 }

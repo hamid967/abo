@@ -73,7 +73,8 @@ export async function runDailyDueScan(now = new Date()) {
     }
   }
   const inactive = await runInactiveDraftScan(now);
-  return { day: window.key, scanned: candidates.length, created, skipped, inactive };
+  const officialUpdates = await db.collectVerifiedOfficialSources();
+  return { day: window.key, scanned: candidates.length, created, skipped, inactive, officialUpdates };
 }
 
 export async function handleDailyDueScan(req: Request, res: Response) {
@@ -88,8 +89,8 @@ export async function handleDailyDueScan(req: Request, res: Response) {
     await db.updateDailyDueScanRun({ success: true, summary: result });
     return res.json({ ok: true, ...result });
   } catch (error) {
-    const details = error instanceof Error ? { message: error.message, stack: error.stack } : { message: String(error) };
-    await db.updateDailyDueScanRun({ success: false, summary: { error: details.message, taskUid: taskUid ?? null } }).catch(() => undefined);
-    return res.status(500).json({ error: "daily_due_scan_failed", context: { taskUid: taskUid ?? null, url: req.originalUrl }, details, timestamp: new Date().toISOString() });
+    const message = error instanceof Error ? error.message : "unknown";
+    await db.updateDailyDueScanRun({ success: false, summary: { error: message.slice(0, 160), taskUid: taskUid ?? null } }).catch(() => undefined);
+    return res.status(500).json({ error: "daily_due_scan_failed", timestamp: new Date().toISOString() });
   }
 }

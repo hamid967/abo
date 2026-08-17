@@ -318,6 +318,65 @@ export const appRouter = router({
       }
     }),
   }),
+  officialUpdates: router({
+    listPublished: protectedProcedure.query(() => db.listPublishedRegulatoryUpdates()),
+    subscriptions: protectedProcedure.query(({ ctx }) => db.listUpdateSubscriptionsForUser(ctx.user.id)),
+    subscribe: protectedProcedure.input(z.object({
+      sourceId: z.number().int().positive().optional(),
+      updateType: z.string().trim().min(2).max(64).optional(),
+      activity: z.string().trim().min(2).max(255).optional(),
+      city: z.string().trim().min(2).max(120).optional(),
+      notificationChannel: z.enum(["in_app", "push"]).default("in_app"),
+    })).mutation(async ({ ctx, input }) => db.createUpdateSubscription({ userId: ctx.user.id, ...input })),
+    setSubscriptionActive: protectedProcedure.input(z.object({ subscriptionId: z.number().int().positive(), isActive: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const updated = await db.setUpdateSubscriptionActive({ userId: ctx.user.id, ...input });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND" });
+      return { success: true } as const;
+    }),
+    adminSources: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      return db.listOfficialSourcesForAdmin();
+    }),
+    initializeZatca: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      return db.ensureInitialZatcaOfficialSource(ctx.user.id);
+    }),
+    collect: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      try {
+        return await db.collectOfficialSource({ actorUserId: ctx.user.id, sourceId: input.sourceId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "OFFICIAL_SOURCE_COLLECTION_FAILED";
+        if (["OFFICIAL_SOURCE_NOT_COLLECTABLE", "OFFICIAL_SOURCE_URL_REJECTED"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw new TRPCError({ code: "BAD_GATEWAY", message: "OFFICIAL_SOURCE_COLLECTION_FAILED" });
+      }
+    }),
+    adminList: protectedProcedure.input(z.object({ status: z.enum(["collected", "duplicate", "processing", "needs_review", "verified", "published", "rejected", "archived"]).optional() })).query(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      return db.listRegulatoryUpdatesForAdmin(input.status);
+    }),
+    review: protectedProcedure.input(z.object({
+      updateId: z.number().int().positive(),
+      action: z.enum(["verify", "publish", "reject"]),
+      note: z.string().trim().max(4000).optional(),
+      titleAr: z.string().trim().max(1024).optional(),
+      titleEn: z.string().trim().max(1024).optional(),
+      summaryAr: z.string().trim().max(12000).optional(),
+      summaryEn: z.string().trim().max(12000).optional(),
+      updateType: z.enum(["system", "regulation", "decision", "circular", "procedural_guide", "platform_update", "deadline", "new_requirement", "fees", "penalty", "new_service", "service_change", "technical_alert", "general_news", "other"]).optional(),
+      importance: z.enum(["low", "normal", "high", "critical"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+      try {
+        return await db.reviewRegulatoryUpdate({ actorUserId: ctx.user.id, ...input });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "REGULATORY_UPDATE_REVIEW_FAILED";
+        if (["REGULATORY_UPDATE_NOT_FOUND"].includes(message)) throw new TRPCError({ code: "NOT_FOUND", message });
+        if (["REGULATORY_UPDATE_REVIEW_STATE_INVALID", "REGULATORY_UPDATE_NOT_VERIFIED"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+  }),
   cloud: router({
     get: protectedProcedure.input(z.object({ recordType: cloudRecordTypeSchema })).query(async ({ ctx, input }) => {
       const record = await db.getCloudRecord(ctx.user.id, input.recordType);
