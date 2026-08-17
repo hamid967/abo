@@ -120,6 +120,27 @@
       "when": 1786926159243,
       "tag": "0016_greedy_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1786957540006,
+      "tag": "0017_cuddly_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1786957804092,
+      "tag": "0018_bizarre_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1786958194594,
+      "tag": "0019_nifty_iron_patriot",
+      "breakpoints": true
     }
   ]
 }

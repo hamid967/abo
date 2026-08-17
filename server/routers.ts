@@ -20,7 +20,7 @@ import { summarizeDocumentText } from "./document-summary";
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const transactionStatusSchema = z.enum(["draft", "received", "under_review", "awaiting_assignment", "assigned", "document_verification", "awaiting_customer_documents", "ready_for_submission", "submitted_to_agency", "under_agency_review", "awaiting_appointment", "beneficiary_attendance_required", "payment_required", "revision_required", "suspended", "overdue", "completed", "rejected", "cancelled", "archived"]);
-const cloudRecordTypeSchema = z.enum(["transactions", "workspace", "inquiries"]);
+const cloudRecordTypeSchema = z.enum(["transactions", "workspace", "inquiries", "today-actions"]);
 const supportedDocumentMimeTypes = ["application/pdf", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"] as const;
 const supportTicketStatusSchema = z.enum(["open", "in_progress", "awaiting_customer", "resolved", "closed"]);
 const knowledgeLanguageSchema = z.enum(["ar", "en"]);
@@ -240,11 +240,81 @@ export const appRouter = router({
   }),
   taskTracking: router({
     list: protectedProcedure.query(({ ctx }) => db.listTaskTrackingForUser(ctx.user.id)),
-    updateStatus: protectedProcedure.input(z.object({ taskId: z.number().int().positive(), status: z.enum(["new", "in_progress", "awaiting_customer", "awaiting_external", "completed", "cancelled"]) })).mutation(async ({ ctx, input }) => {
-      const updated = await db.updateTrackedTaskStatus({ userId: ctx.user.id, ...input });
+    detail: protectedProcedure.input(z.object({ taskId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const result = await db.getTaskExecutionDetailsForUser(ctx.user.id, input.taskId);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND" });
+      return result;
+    }),
+    addDependency: protectedProcedure.input(z.object({ taskId: z.number().int().positive(), dependsOnTaskId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.addTaskDependency({ userId: ctx.user.id, ...input });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "task.dependency_added", resourceType: "task", resourceId: input.taskId, metadata: { dependsOnTaskId: input.dependsOnTaskId } });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "TASK_DEPENDENCY_FAILED";
+        if (["TASK_DEPENDENCY_SELF_REFERENCE", "TASK_DEPENDENCY_CYCLE", "TASK_DEPENDENCY_ALREADY_EXISTS"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        if (message === "TASK_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+        throw error;
+      }
+    }),
+    addChecklistItem: protectedProcedure.input(z.object({ taskId: z.number().int().positive(), title: z.string().trim().min(2).max(255), isRequired: z.boolean().default(true) })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.addTaskChecklistItem({ userId: ctx.user.id, ...input });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "task.checklist_item_added", resourceType: "task", resourceId: input.taskId, metadata: { checklistItemId: result.id, isRequired: input.isRequired } });
+        return result;
+      } catch (error) {
+        if (error instanceof Error && error.message === "TASK_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+        throw error;
+      }
+    }),
+    setChecklistCompletion: protectedProcedure.input(z.object({ checklistItemId: z.number().int().positive(), completed: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const updated = await db.setTaskChecklistItemCompletion({ userId: ctx.user.id, ...input });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "task.checklist_item_completion_updated", resourceType: "task_checklist_item", resourceId: input.checklistItemId, metadata: { completed: input.completed } });
+      return { success: true } as const;
+    }),
+    updateStatus: protectedProcedure.input(z.object({ taskId: z.number().int().positive(), status: z.enum(["new", "in_progress", "awaiting_customer", "awaiting_external", "completed", "cancelled"]) })).mutation(async ({ ctx, input }) => {
+      const result = await db.updateTrackedTaskStatus({ userId: ctx.user.id, ...input });
+      if (result.blockedBy) throw new TRPCError({ code: "BAD_REQUEST", message: result.blockedBy.type === "dependency" ? "TASK_BLOCKED_BY_DEPENDENCY" : result.blockedBy.type === "checklist" ? "TASK_BLOCKED_BY_CHECKLIST" : "TASK_BLOCKED_BY_APPROVAL" });
+      if (!result.updated) throw new TRPCError({ code: "NOT_FOUND" });
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "task.status_updated", resourceType: "task", resourceId: input.taskId, metadata: { status: input.status } });
       return { success: true } as const;
+    }),
+  }),
+  approvals: router({
+    forResource: protectedProcedure.input(z.object({ resourceType: z.enum(["task", "service_request"]), resourceId: z.string().trim().min(1).max(64) })).query(async ({ ctx, input }) => {
+      const approvals = await db.listApprovalsForResource(ctx.user.id, input.resourceType, input.resourceId);
+      if (!approvals) throw new TRPCError({ code: "NOT_FOUND" });
+      return approvals;
+    }),
+    create: protectedProcedure.input(z.object({
+      resourceType: z.enum(["task", "service_request"]),
+      resourceId: z.string().trim().min(1).max(64),
+      routingMode: z.enum(["sequential", "parallel"]).default("sequential"),
+      expiresAt: z.date().optional(),
+      steps: z.array(z.object({ requiredRole: z.enum(["user", "employee", "supervisor", "admin", "super_admin"]), assignedUserId: z.number().int().positive().optional(), label: z.string().trim().min(2).max(255) })).min(1).max(12),
+    })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.createApprovalRequest({ userId: ctx.user.id, ...input });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "approval.request_created", resourceType: input.resourceType, resourceId: Number(input.resourceId) || undefined, metadata: { approvalRequestId: result.id, routingMode: input.routingMode, stepCount: input.steps.length } });
+        return result;
+      } catch (error) {
+        if (error instanceof Error && error.message === "APPROVAL_RESOURCE_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
+        if (error instanceof Error && error.message === "APPROVAL_REQUEST_ALREADY_PENDING") throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        throw error;
+      }
+    }),
+    decide: protectedProcedure.input(z.object({ approvalRequestId: z.string().uuid(), stepId: z.number().int().positive(), decision: z.enum(["approved", "rejected", "changes_requested", "information_requested"]), note: z.string().trim().max(1000).optional() })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.decideApprovalStep({ userId: ctx.user.id, userRole: ctx.user.role, ...input });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "approval.step_decided", resourceType: "approval_request", resourceId: undefined, metadata: { approvalRequestId: input.approvalRequestId, stepId: input.stepId, decision: input.decision } });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "APPROVAL_DECISION_FAILED";
+        if (["APPROVAL_REQUEST_NOT_PENDING", "APPROVAL_STEP_NOT_PENDING", "APPROVAL_REQUEST_EXPIRED", "APPROVAL_SEQUENCE_BLOCKED"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        if (message === "APPROVAL_DECISION_FORBIDDEN") throw new TRPCError({ code: "FORBIDDEN", message });
+        throw error;
+      }
     }),
   }),
   cloud: router({
@@ -511,6 +581,10 @@ export const appRouter = router({
       const overview = await db.getSystemTransactionDashboard(input.status, input.search);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: input.search ? "admin.dashboard_search" : "admin.dashboard_view", resourceType: "admin_dashboard", metadata: { status: input.status ?? null, searchLength: input.search?.length ?? 0 } });
       return overview;
+    }),
+    workload: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      return db.getTaskWorkloadOverview();
     }),
   }),
   automationOps: router({

@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { aiConversations, aiMessages, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
+import { aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, organizationMembers, organizations, playbookSteps, playbookVersions, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -656,14 +656,14 @@ export async function searchAccessibleRecords(userId: number, role: string, term
   return { requests: requestsResult, transactions: transactionsResult };
 }
 
-export async function getCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries") {
+export async function getCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries" | "today-actions") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const rows = await db.select().from(cloudRecords).where(and(eq(cloudRecords.ownerUserId, ownerUserId), eq(cloudRecords.recordType, recordType))).limit(1);
   return rows[0];
 }
 
-export async function upsertCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries", payload: unknown) {
+export async function upsertCloudRecord(ownerUserId: number, recordType: "transactions" | "workspace" | "inquiries" | "today-actions", payload: unknown) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.insert(cloudRecords).values({ ownerUserId, recordType, payload }).onDuplicateKeyUpdate({ set: { payload, updatedAt: new Date() } });
@@ -804,6 +804,21 @@ export async function getSystemTransactionDashboard(status?: (typeof transaction
   const rowQuery = db.select({ id: transactions.id, referenceNumber: transactions.referenceNumber, status: transactions.status, priority: transactions.priority, nextAction: transactions.nextAction, dueAt: transactions.dueAt, updatedAt: transactions.updatedAt, customerUserId: transactions.customerUserId, customerName: users.name, customerPhone: serviceRequests.customerPhone, organizationName: organizations.name, assigneeUserId: transactions.assigneeUserId }).from(transactions).leftJoin(users, eq(transactions.customerUserId, users.id)).leftJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id)).leftJoin(organizations, eq(transactions.organizationId, organizations.id));
   const rows = criteria.length ? await rowQuery.where(and(...criteria)).orderBy(desc(transactions.updatedAt)).limit(100) : await rowQuery.orderBy(desc(transactions.updatedAt)).limit(100);
   return { metrics: { total, active: total - inactive, overdue: statusTotals.overdue ?? 0, awaitingDocuments: statusTotals.awaiting_customer_documents ?? 0, completed }, transactions: rows };
+}
+
+export async function getTaskWorkloadOverview() {
+  const db = await getDb();
+  if (!db) return { totalActive: 0, overdue: 0, unassigned: 0, team: [] as Array<{ assigneeUserId: number | null; name: string; active: number; overdue: number }> };
+  const grouped = await db.select({
+    assigneeUserId: tasks.assigneeUserId,
+    active: sql<number>`sum(case when ${tasks.status} not in ('completed', 'cancelled') then 1 else 0 end)`,
+    overdue: sql<number>`sum(case when ${tasks.status} not in ('completed', 'cancelled') and coalesce(${tasks.slaDueAt}, ${tasks.dueAt}) is not null and coalesce(${tasks.slaDueAt}, ${tasks.dueAt}) < now() then 1 else 0 end)`,
+  }).from(tasks).groupBy(tasks.assigneeUserId);
+  const assigneeIds = grouped.map((row) => row.assigneeUserId).filter((id): id is number => typeof id === "number");
+  const members = assigneeIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, assigneeIds)) : [];
+  const names = new Map(members.map((member) => [member.id, member.name || `عضو #${member.id}`]));
+  const team = grouped.map((row) => ({ assigneeUserId: row.assigneeUserId, name: row.assigneeUserId ? names.get(row.assigneeUserId) ?? `عضو #${row.assigneeUserId}` : "غير معيّنة", active: Number(row.active ?? 0), overdue: Number(row.overdue ?? 0) })).sort((a, b) => b.active - a.active || b.overdue - a.overdue);
+  return { totalActive: team.reduce((sum, row) => sum + row.active, 0), overdue: team.reduce((sum, row) => sum + row.overdue, 0), unassigned: team.find((row) => row.assigneeUserId === null)?.active ?? 0, team };
 }
 
 export type DraftStructuredData = Record<string, unknown>;
@@ -1217,9 +1232,172 @@ export async function listTaskTrackingForUser(userId: number) {
   }).from(tasks).leftJoin(transactions, eq(tasks.transactionId, transactions.id)).where(or(eq(tasks.ownerUserId, userId), eq(tasks.assigneeUserId, userId))).orderBy(asc(tasks.slaDueAt), desc(tasks.createdAt));
 }
 
+type TaskBlockReason = { type: "dependency" | "checklist" | "approval"; count: number };
+
+async function canAccessTrackedTask(userId: number, taskId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ id: tasks.id }).from(tasks).where(and(
+    eq(tasks.id, taskId),
+    or(eq(tasks.ownerUserId, userId), eq(tasks.assigneeUserId, userId)),
+  )).limit(1);
+  return rows[0];
+}
+
+async function taskCompletionBlockReason(taskId: number): Promise<TaskBlockReason | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const dependencies = await db.select({ id: taskDependencies.id }).from(taskDependencies)
+    .innerJoin(tasks, eq(taskDependencies.dependsOnTaskId, tasks.id))
+    .where(and(eq(taskDependencies.taskId, taskId), ne(tasks.status, "completed")));
+  if (dependencies.length) return { type: "dependency", count: dependencies.length };
+  const checklist = await db.select({ id: taskChecklistItems.id }).from(taskChecklistItems)
+    .where(and(eq(taskChecklistItems.taskId, taskId), eq(taskChecklistItems.isRequired, true), isNull(taskChecklistItems.completedAt)));
+  if (checklist.length) return { type: "checklist", count: checklist.length };
+  const approvals = await db.select({ id: approvalRequests.id }).from(approvalRequests).where(and(
+    eq(approvalRequests.resourceType, "task"),
+    eq(approvalRequests.resourceId, String(taskId)),
+    eq(approvalRequests.status, "pending"),
+  ));
+  if (approvals.length) return { type: "approval", count: approvals.length };
+  return undefined;
+}
+
+async function wouldCreateDependencyCycle(taskId: number, dependsOnTaskId: number) {
+  const db = await getDb();
+  if (!db) return true;
+  const edges = await db.select({ taskId: taskDependencies.taskId, dependsOnTaskId: taskDependencies.dependsOnTaskId }).from(taskDependencies);
+  const pending = [dependsOnTaskId];
+  const visited = new Set<number>();
+  while (pending.length) {
+    const current = pending.pop();
+    if (current === undefined || visited.has(current)) continue;
+    if (current === taskId) return true;
+    visited.add(current);
+    edges.filter((edge) => edge.taskId === current).forEach((edge) => pending.push(edge.dependsOnTaskId));
+  }
+  return false;
+}
+
+export async function getTaskExecutionDetailsForUser(userId: number, taskId: number) {
+  const db = await getDb();
+  if (!db || !await canAccessTrackedTask(userId, taskId)) return undefined;
+  const [dependencies, checklist] = await Promise.all([
+    db.select({ id: taskDependencies.id, taskId: taskDependencies.taskId, dependsOnTaskId: taskDependencies.dependsOnTaskId, title: tasks.title, status: tasks.status, createdAt: taskDependencies.createdAt })
+      .from(taskDependencies).innerJoin(tasks, eq(taskDependencies.dependsOnTaskId, tasks.id)).where(eq(taskDependencies.taskId, taskId)),
+    db.select({ id: taskChecklistItems.id, title: taskChecklistItems.title, isRequired: taskChecklistItems.isRequired, position: taskChecklistItems.position, completedAt: taskChecklistItems.completedAt })
+      .from(taskChecklistItems).where(eq(taskChecklistItems.taskId, taskId)).orderBy(asc(taskChecklistItems.position), asc(taskChecklistItems.id)),
+  ]);
+  return { dependencies, checklist, blockedBy: await taskCompletionBlockReason(taskId) };
+}
+
+export async function addTaskDependency(input: { userId: number; taskId: number; dependsOnTaskId: number }) {
+  if (input.taskId === input.dependsOnTaskId) throw new Error("TASK_DEPENDENCY_SELF_REFERENCE");
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [task, dependency] = await Promise.all([canAccessTrackedTask(input.userId, input.taskId), canAccessTrackedTask(input.userId, input.dependsOnTaskId)]);
+  if (!task || !dependency) throw new Error("TASK_NOT_FOUND");
+  if (await wouldCreateDependencyCycle(input.taskId, input.dependsOnTaskId)) throw new Error("TASK_DEPENDENCY_CYCLE");
+  try {
+    const result = await db.insert(taskDependencies).values({ taskId: input.taskId, dependsOnTaskId: input.dependsOnTaskId, createdByUserId: input.userId });
+    return { id: Number(result[0].insertId) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Duplicate") || message.includes("ER_DUP_ENTRY")) throw new Error("TASK_DEPENDENCY_ALREADY_EXISTS");
+    throw error;
+  }
+}
+
+export async function addTaskChecklistItem(input: { userId: number; taskId: number; title: string; isRequired: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (!await canAccessTrackedTask(input.userId, input.taskId)) throw new Error("TASK_NOT_FOUND");
+  const existing = await db.select({ id: taskChecklistItems.id }).from(taskChecklistItems).where(eq(taskChecklistItems.taskId, input.taskId));
+  const result = await db.insert(taskChecklistItems).values({ taskId: input.taskId, title: input.title, isRequired: input.isRequired, position: existing.length, createdByUserId: input.userId });
+  return { id: Number(result[0].insertId) };
+}
+
+export async function setTaskChecklistItemCompletion(input: { userId: number; checklistItemId: number; completed: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select({ taskId: taskChecklistItems.taskId }).from(taskChecklistItems).where(eq(taskChecklistItems.id, input.checklistItemId)).limit(1);
+  const item = rows[0];
+  if (!item || !await canAccessTrackedTask(input.userId, item.taskId)) return false;
+  const result = await db.update(taskChecklistItems).set({ completedAt: input.completed ? new Date() : null, completedByUserId: input.completed ? input.userId : null }).where(eq(taskChecklistItems.id, input.checklistItemId));
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+}
+
+export type ApprovalResourceType = "task" | "service_request";
+export type ApprovalRole = "user" | "employee" | "supervisor" | "admin" | "super_admin";
+export type ApprovalDecision = "approved" | "rejected" | "changes_requested" | "information_requested";
+
+async function approvalResourceOwner(userId: number, resourceType: ApprovalResourceType, resourceId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const numericId = Number(resourceId);
+  if (!Number.isInteger(numericId) || numericId <= 0) return undefined;
+  if (resourceType === "task") {
+    const task = await canAccessTrackedTask(userId, numericId);
+    if (!task) return undefined;
+    const rows = await db.select({ ownerUserId: tasks.ownerUserId }).from(tasks).where(eq(tasks.id, numericId)).limit(1);
+    return rows[0]?.ownerUserId;
+  }
+  const rows = await db.select({ customerUserId: serviceRequests.customerUserId }).from(serviceRequests).where(and(eq(serviceRequests.id, numericId), eq(serviceRequests.customerUserId, userId))).limit(1);
+  return rows[0]?.customerUserId;
+}
+
+export async function createApprovalRequest(input: { userId: number; resourceType: ApprovalResourceType; resourceId: string; routingMode: "sequential" | "parallel"; expiresAt?: Date; steps: Array<{ requiredRole: ApprovalRole; assignedUserId?: number; label: string }> }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const ownerUserId = await approvalResourceOwner(input.userId, input.resourceType, input.resourceId);
+  if (!ownerUserId) throw new Error("APPROVAL_RESOURCE_NOT_FOUND");
+  const existing = await db.select({ id: approvalRequests.id }).from(approvalRequests).where(and(
+    eq(approvalRequests.resourceType, input.resourceType),
+    eq(approvalRequests.resourceId, input.resourceId),
+    eq(approvalRequests.status, "pending"),
+  )).limit(1);
+  if (existing.length) throw new Error("APPROVAL_REQUEST_ALREADY_PENDING");
+  const id = randomUUID();
+  await db.insert(approvalRequests).values({ id, resourceType: input.resourceType, resourceId: input.resourceId, ownerUserId, createdByUserId: input.userId, routingMode: input.routingMode, expiresAt: input.expiresAt });
+  await db.insert(approvalSteps).values(input.steps.map((step, index) => ({ approvalRequestId: id, stepOrder: index, requiredRole: step.requiredRole, assignedUserId: step.assignedUserId, label: step.label })));
+  return { id };
+}
+
+export async function listApprovalsForResource(userId: number, resourceType: ApprovalResourceType, resourceId: string) {
+  const db = await getDb();
+  if (!db || !await approvalResourceOwner(userId, resourceType, resourceId)) return undefined;
+  const requests = await db.select().from(approvalRequests).where(and(eq(approvalRequests.resourceType, resourceType), eq(approvalRequests.resourceId, resourceId))).orderBy(desc(approvalRequests.createdAt));
+  const ids = requests.map((request) => request.id);
+  const steps = ids.length ? await db.select().from(approvalSteps).where(inArray(approvalSteps.approvalRequestId, ids)).orderBy(asc(approvalSteps.stepOrder)) : [];
+  return requests.map((request) => ({ ...request, steps: steps.filter((step) => step.approvalRequestId === request.id) }));
+}
+
+export async function decideApprovalStep(input: { userId: number; userRole: ApprovalRole; approvalRequestId: string; stepId: number; decision: ApprovalDecision; note?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const requestRows = await db.select().from(approvalRequests).where(eq(approvalRequests.id, input.approvalRequestId)).limit(1);
+  const request = requestRows[0];
+  if (!request || request.status !== "pending") throw new Error("APPROVAL_REQUEST_NOT_PENDING");
+  if (request.expiresAt && request.expiresAt.getTime() <= Date.now()) {
+    await db.update(approvalRequests).set({ status: "expired" }).where(eq(approvalRequests.id, request.id));
+    throw new Error("APPROVAL_REQUEST_EXPIRED");
+  }
+  const steps = await db.select().from(approvalSteps).where(eq(approvalSteps.approvalRequestId, request.id)).orderBy(asc(approvalSteps.stepOrder));
+  const step = steps.find((candidate) => candidate.id === input.stepId);
+  if (!step || step.status !== "pending") throw new Error("APPROVAL_STEP_NOT_PENDING");
+  if (step.assignedUserId ? step.assignedUserId !== input.userId : step.requiredRole !== input.userRole) throw new Error("APPROVAL_DECISION_FORBIDDEN");
+  if (request.routingMode === "sequential" && steps.some((candidate) => candidate.stepOrder < step.stepOrder && !["approved", "skipped"].includes(candidate.status))) throw new Error("APPROVAL_SEQUENCE_BLOCKED");
+  await db.update(approvalSteps).set({ status: input.decision, decisionNote: input.note ?? null, decidedByUserId: input.userId, decidedAt: new Date() }).where(eq(approvalSteps.id, step.id));
+  const nextStatus = input.decision === "approved" && steps.filter((candidate) => candidate.id !== step.id).every((candidate) => ["approved", "skipped"].includes(candidate.status)) ? "approved" : input.decision === "approved" ? "pending" : input.decision;
+  await db.update(approvalRequests).set({ status: nextStatus }).where(eq(approvalRequests.id, request.id));
+  return { requestStatus: nextStatus };
+}
+
 export async function updateTrackedTaskStatus(input: { userId: number; taskId: number; status: "new" | "in_progress" | "awaiting_customer" | "awaiting_external" | "completed" | "cancelled" }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const blockedBy = input.status === "completed" ? await taskCompletionBlockReason(input.taskId) : undefined;
+  if (blockedBy) return { updated: false, blockedBy };
   const result = await db.update(tasks).set({ status: input.status, completedAt: input.status === "completed" ? new Date() : null }).where(and(eq(tasks.id, input.taskId), or(eq(tasks.ownerUserId, input.userId), eq(tasks.assigneeUserId, input.userId))));
-  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+  return { updated: Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0, blockedBy: undefined };
 }

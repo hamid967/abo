@@ -11,6 +11,9 @@ describe("today dashboard", () => {
     expect(screen).toContain("daysUntil(transaction.dueDate)");
     expect(screen).toContain("reason");
     expect(screen).toContain('pathname: "/transaction/[id]"');
+    expect(screen).toContain("useTodayActions");
+    expect(screen).toContain("nextDayAtNine");
+    expect(screen).toContain("إخفاء من يومي");
   });
 
   it("links the existing home dashboard to the dedicated daily view", () => {

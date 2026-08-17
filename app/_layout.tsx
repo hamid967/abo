@@ -16,6 +16,7 @@ import { WorkspaceProvider } from "@/lib/workspace-provider";
 import { RoleProvider } from "@/lib/role-provider";
 import { InquiryProvider } from "@/lib/inquiries-provider";
 import { LocaleProvider } from "@/lib/locale-provider";
+import { TodayActionsProvider } from "@/lib/today-actions-provider";
 import { AccountProvider, useAccount } from "@/hooks/use-account";
 import { BiometricUnlockScreen } from "@/components/biometric-unlock-screen";
 import { MobileNotificationObserver } from "@/components/mobile-notification-observer";
@@ -125,7 +126,8 @@ export default function RootLayout() {
               <TransactionProvider>
                 <WorkspaceProvider>
                   <InquiryProvider>
-                    <MobileNotificationObserver />
+                    <TodayActionsProvider>
+                      <MobileNotificationObserver />
               <Stack initialRouteName="welcome" screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="welcome" />
@@ -150,7 +152,8 @@ export default function RootLayout() {
                 <Stack.Screen name="reports/index" />
                 <Stack.Screen name="account/index" />
                 <Stack.Screen name="oauth/callback" />
-              </Stack>
+                  </Stack>
+                    </TodayActionsProvider>
                   </InquiryProvider>
                 </WorkspaceProvider>
               </TransactionProvider>

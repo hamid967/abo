@@ -1,0 +1,1 @@
+ALTER TABLE `cloud_records` MODIFY COLUMN `recordType` enum('transactions','workspace','inquiries','today-actions') NOT NULL;

@@ -228,6 +228,82 @@ export const tasks = mysqlTable("tasks", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("tasks_owner_idx").on(table.ownerUserId), index("tasks_transaction_idx").on(table.transactionId), index("tasks_status_idx").on(table.status), index("tasks_sla_due_idx").on(table.slaDueAt, table.status), uniqueIndex("tasks_playbook_step_unique").on(table.transactionId, table.sourceType, table.sourceKey), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "tasks_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "tasks_owner_fk" }).onDelete("restrict"), foreignKey({ columns: [table.assigneeUserId], foreignColumns: [users.id], name: "tasks_assignee_fk" }).onDelete("set null")]);
 
+/**
+ * تمنع إكمال المهمة التابعة قبل إكمال المهمة السابقة. يطبق المنع في الخادم
+ * ولا يكفي إخفاء زر الإكمال في الجوال.
+ */
+export const taskDependencies = mysqlTable("task_dependencies", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("taskId").notNull(),
+  dependsOnTaskId: int("dependsOnTaskId").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("task_dependencies_unique").on(table.taskId, table.dependsOnTaskId),
+  index("task_dependencies_task_idx").on(table.taskId),
+  index("task_dependencies_predecessor_idx").on(table.dependsOnTaskId),
+  foreignKey({ columns: [table.taskId], foreignColumns: [tasks.id], name: "task_dependencies_task_fk" }).onDelete("cascade"),
+  foreignKey({ columns: [table.dependsOnTaskId], foreignColumns: [tasks.id], name: "task_dependencies_predecessor_fk" }).onDelete("cascade"),
+  foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "task_dependencies_creator_fk" }).onDelete("restrict"),
+]);
+
+export const taskChecklistItems = mysqlTable("task_checklist_items", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("taskId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  isRequired: boolean("isRequired").default(true).notNull(),
+  position: int("position").default(0).notNull(),
+  completedAt: timestamp("completedAt"),
+  completedByUserId: int("completedByUserId"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("task_checklist_items_task_idx").on(table.taskId, table.position),
+  foreignKey({ columns: [table.taskId], foreignColumns: [tasks.id], name: "task_checklist_items_task_fk" }).onDelete("cascade"),
+  foreignKey({ columns: [table.completedByUserId], foreignColumns: [users.id], name: "task_checklist_items_completed_by_fk" }).onDelete("set null"),
+  foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "task_checklist_items_creator_fk" }).onDelete("restrict"),
+]);
+
+export const approvalRequests = mysqlTable("approval_requests", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  resourceType: mysqlEnum("resourceType", ["task", "service_request"]).notNull(),
+  resourceId: varchar("resourceId", { length: 64 }).notNull(),
+  ownerUserId: int("ownerUserId").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  routingMode: mysqlEnum("routingMode", ["sequential", "parallel"]).default("sequential").notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "changes_requested", "information_requested", "cancelled", "expired"]).default("pending").notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("approval_requests_resource_idx").on(table.resourceType, table.resourceId, table.status),
+  index("approval_requests_owner_idx").on(table.ownerUserId, table.status),
+  foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "approval_requests_owner_fk" }).onDelete("restrict"),
+  foreignKey({ columns: [table.createdByUserId], foreignColumns: [users.id], name: "approval_requests_creator_fk" }).onDelete("restrict"),
+]);
+
+export const approvalSteps = mysqlTable("approval_steps", {
+  id: int("id").autoincrement().primaryKey(),
+  approvalRequestId: varchar("approvalRequestId", { length: 36 }).notNull(),
+  stepOrder: int("stepOrder").notNull(),
+  requiredRole: mysqlEnum("requiredRole", ["user", "employee", "supervisor", "admin", "super_admin"]).notNull(),
+  assignedUserId: int("assignedUserId"),
+  label: varchar("label", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "changes_requested", "information_requested", "skipped"]).default("pending").notNull(),
+  decisionNote: text("decisionNote"),
+  decidedByUserId: int("decidedByUserId"),
+  decidedAt: timestamp("decidedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("approval_steps_order_unique").on(table.approvalRequestId, table.stepOrder),
+  index("approval_steps_assignee_idx").on(table.assignedUserId, table.status),
+  index("approval_steps_role_idx").on(table.requiredRole, table.status),
+  foreignKey({ columns: [table.approvalRequestId], foreignColumns: [approvalRequests.id], name: "approval_steps_request_fk" }).onDelete("cascade"),
+  foreignKey({ columns: [table.assignedUserId], foreignColumns: [users.id], name: "approval_steps_assignee_fk" }).onDelete("set null"),
+  foreignKey({ columns: [table.decidedByUserId], foreignColumns: [users.id], name: "approval_steps_decider_fk" }).onDelete("set null"),
+]);
+
 export const appointments = mysqlTable("appointments", {
   id: int("id").autoincrement().primaryKey(),
   transactionId: int("transactionId"),
@@ -359,7 +435,7 @@ export const auditLogs = mysqlTable("audit_logs", {
 export const cloudRecords = mysqlTable("cloud_records", {
   id: int("id").autoincrement().primaryKey(),
   ownerUserId: int("ownerUserId").notNull(),
-  recordType: mysqlEnum("recordType", ["transactions", "workspace", "inquiries"]).notNull(),
+  recordType: mysqlEnum("recordType", ["transactions", "workspace", "inquiries", "today-actions"]).notNull(),
   payload: json("payload").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
