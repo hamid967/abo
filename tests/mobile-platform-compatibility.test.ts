@@ -72,4 +72,16 @@ describe("mobile platform compatibility", () => {
     expect(notificationService).toContain('url: "/task-tracking"');
     expect(mobilePush).toContain("Platform.OS !== \"ios\" && Platform.OS !== \"android\"");
   });
+
+  it("keeps primary actions and counts visible in the refreshed workspace sections", () => {
+    const workspace = readFileSync("app/workspace/index.tsx", "utf8");
+    const notifications = readFileSync("app/notifications/index.tsx", "utf8");
+    expect(workspace).toContain("summaryCard");
+    expect(workspace).toContain("إضافة مهمة جديدة");
+    expect(taskTracking).toContain("filterCounts");
+    expect(taskTracking).toContain("ListFooterComponent");
+    expect(taskTracking).toContain("completionMessage");
+    expect(notifications).toContain("viewNotification");
+    expect(notifications).toContain("actionRow");
+  });
 });
