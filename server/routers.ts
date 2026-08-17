@@ -446,7 +446,7 @@ export const appRouter = router({
     }),
   }),
   notifications: router({
-    list: protectedProcedure.query(({ ctx }) => db.listNotifications(ctx.user.id)),
+    list: protectedProcedure.query(({ ctx }) => db.listNotificationCenter(ctx.user.id)),
     markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const result = await db.markNotificationRead(input.notificationId, ctx.user.id);
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "notification.read", resourceType: "notification", resourceId: input.notificationId });

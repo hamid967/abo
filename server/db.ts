@@ -466,6 +466,38 @@ export async function listNotifications(userId: number) {
   return db.select().from(notifications).where(eq(notifications.recipientUserId, userId)).orderBy(desc(notifications.createdAt)).limit(80);
 }
 
+function notificationTaskId(data: unknown) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const value = (data as Record<string, unknown>).taskId;
+  const taskId = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isSafeInteger(taskId) && taskId > 0 ? taskId : undefined;
+}
+
+export async function listNotificationCenter(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const items = await db.select().from(notifications).where(eq(notifications.recipientUserId, userId)).orderBy(desc(notifications.createdAt)).limit(80);
+  if (!items.length) return [];
+  const notificationIds = items.map((item) => item.id);
+  const deliveryRows = await db.select({ notificationId: notificationDeliveryLogs.notificationId, channel: notificationDeliveryLogs.channel, status: notificationDeliveryLogs.status, createdAt: notificationDeliveryLogs.createdAt, deliveredAt: notificationDeliveryLogs.deliveredAt }).from(notificationDeliveryLogs).where(inArray(notificationDeliveryLogs.notificationId, notificationIds)).orderBy(desc(notificationDeliveryLogs.createdAt)).limit(240);
+  const taskIds = [...new Set(items.map((item) => notificationTaskId(item.data)).filter((id): id is number => id !== undefined))];
+  const taskRows = taskIds.length
+    ? await db.select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, slaDueAt: tasks.slaDueAt, dueAt: tasks.dueAt }).from(tasks).where(and(inArray(tasks.id, taskIds), or(eq(tasks.ownerUserId, userId), eq(tasks.assigneeUserId, userId))))
+    : [];
+  const tasksById = new Map(taskRows.map((task) => [task.id, task]));
+  const deliveryByNotification = new Map<number, typeof deliveryRows>();
+  for (const delivery of deliveryRows) {
+    const current = deliveryByNotification.get(delivery.notificationId) ?? [];
+    current.push(delivery);
+    deliveryByNotification.set(delivery.notificationId, current);
+  }
+  return items.map((item) => ({
+    ...item,
+    task: notificationTaskId(item.data) ? tasksById.get(notificationTaskId(item.data)!) ?? null : null,
+    deliveries: deliveryByNotification.get(item.id) ?? [],
+  }));
+}
+
 export async function markNotificationRead(notificationId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
