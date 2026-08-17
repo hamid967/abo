@@ -11,6 +11,16 @@ describe("daily due-date scan", () => {
     expect(source).not.toContain("stack: error.stack");
   });
 
+  it("يعرض حالة الفحص اليومي للمدير من دون كشف معرّف مهمة الجدولة", () => {
+    const router = readFileSync("server/routers.ts", "utf8");
+    const screen = readFileSync("app/admin/index.tsx", "utf8");
+    expect(router).toContain("dailyDueStatus: protectedProcedure.query");
+    expect(router).toContain("admin.daily_due_status_view");
+    expect(router).not.toContain("heartbeatTaskUid");
+    expect(screen).toContain("حالة الفحص اليومي");
+    expect(screen).toContain("dailyDueStatus.refetch()");
+  });
+
   it("uses the Saudi calendar day for an idempotency key", () => {
     const window = getSaudiDayWindow(now);
     expect(window.key).toBe("2026-08-15");

@@ -60,13 +60,35 @@ function intentFromKeywords(message: string): RequestIntent {
   return "unknown_intent";
 }
 
+function beneficiaryTypeFromMessage(message: string): IntentDetection["entities"]["beneficiaryType"] {
+  if (/(?:عن نفسي|فرد|شخصي|شخص|individual)/i.test(message)) return "individual";
+  if (/(?:مؤسسة|منشأة|establishment)/i.test(message)) return "establishment";
+  if (/(?:شركة|company)/i.test(message)) return "company";
+  if (/(?:جمعية|association)/i.test(message)) return "association";
+  if (/(?:غير ربحي|غير ربحية|nonprofit)/i.test(message)) return "nonprofit";
+  if (/(?:بالنيابة|ممثل|تمثيل عن|representative)/i.test(message)) return "representative";
+  return null;
+}
+
+function shortMatch(message: string, expression: RegExp) {
+  const value = message.match(expression)?.[1]?.trim().replace(/[،,.]+$/g, "") ?? null;
+  return value && value.length >= 2 ? value.slice(0, 180) : null;
+}
+
 function localExtraction(message: string, intent: RequestIntent): IntentDetection {
   const phone = message.match(/(?:\+966|00966|0)?5\d{8}\b/)?.[0] ?? null;
   const email = message.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
   const transactionNumber = message.match(/(?:رقم\s*(?:المعاملة|الطلب|المرجع)|transaction|reference)\s*[:#-]?\s*([A-Za-z0-9-]{4,96})/i)?.[1] ?? null;
+  const beneficiaryType = beneficiaryTypeFromMessage(message);
+  const serviceName = shortMatch(message, /(?:الخدمة|خدمة|معاملة)\s*(?:هي|هي:|:)?\s*([^\n،,.]+?)(?=\s+(?:لدى|في|مع)\s+|$)/i);
+  const entityName = shortMatch(message, /(?:لدى|في|مع)\s+((?:وزارة|هيئة|أمانة|إدارة|بلدية|(?:ال)?مرور|جوازات|منصة|مؤسسة|شركة)[^\n،,.]{0,120})/i);
+  const beneficiaryName = shortMatch(message, /(?:اسمي|المستفيد(?: هو)?|باسم)\s*[:：-]?\s*([^\n،,.]{2,160}?)(?=\s+(?:و)?في\s+مدينة|\s+وفي\s+مدينة|[،,.]|$)/i);
+  const city = shortMatch(message, /(?:في مدينة|المدينة)\s*[:：-]?\s*([^\n،,.]{2,120})/i);
+  const priority = /(عاجل|مستعجل|urgent)/i.test(message) ? "urgent" : /(مهم|high priority)/i.test(message) ? "high" : null;
+  const title = serviceName ?? null;
   const requiresHumanReview = intent === "talk_to_human" || intent === "create_complaint" || intent === "pay_invoice";
   const missingFields = intent === "track_transaction" && !transactionNumber ? ["transactionNumber"] : intent === "create_request" ? ["beneficiaryType", "serviceName"] : [];
-  return { intent, confidence: intent === "unknown_intent" ? 0.2 : 0.62, entities: { ...emptyEntities, description: message.slice(0, 900) || null, phoneNumber: phone, email, transactionNumber, referenceNumber: transactionNumber }, missingFields, requiresHumanReview };
+  return { intent, confidence: intent === "unknown_intent" ? 0.2 : 0.62, entities: { ...emptyEntities, beneficiaryType, serviceName, entityName, title, description: message.slice(0, 900) || null, city, priority, beneficiaryName, phoneNumber: phone, email, transactionNumber, referenceNumber: transactionNumber }, missingFields, requiresHumanReview };
 }
 
 function prompt(language: "ar" | "en") {
@@ -92,7 +114,7 @@ export async function detectRequestIntent(input: { message: string; language: "a
     const content = response.choices[0]?.message?.content;
     if (typeof content !== "string") return fallback;
     const parsed = intentResultSchema.parse(JSON.parse(content));
-    return { ...parsed, entities: { ...emptyEntities, ...parsed.entities, phoneNumber: parsed.entities.phoneNumber ?? fallback.entities.phoneNumber, email: parsed.entities.email ?? fallback.entities.email, transactionNumber: parsed.entities.transactionNumber ?? fallback.entities.transactionNumber, referenceNumber: parsed.entities.referenceNumber ?? fallback.entities.referenceNumber }, requiresHumanReview: parsed.requiresHumanReview || parsed.intent === "pay_invoice" || parsed.intent === "create_complaint" };
+    return { ...parsed, entities: { beneficiaryType: parsed.entities.beneficiaryType ?? fallback.entities.beneficiaryType, serviceName: parsed.entities.serviceName ?? fallback.entities.serviceName, entityName: parsed.entities.entityName ?? fallback.entities.entityName, title: parsed.entities.title ?? fallback.entities.title, description: parsed.entities.description ?? fallback.entities.description, transactionNumber: parsed.entities.transactionNumber ?? fallback.entities.transactionNumber, referenceNumber: parsed.entities.referenceNumber ?? fallback.entities.referenceNumber, city: parsed.entities.city ?? fallback.entities.city, branch: parsed.entities.branch ?? fallback.entities.branch, priority: parsed.entities.priority ?? fallback.entities.priority, requestedDate: parsed.entities.requestedDate ?? fallback.entities.requestedDate, beneficiaryName: parsed.entities.beneficiaryName ?? fallback.entities.beneficiaryName, phoneNumber: parsed.entities.phoneNumber ?? fallback.entities.phoneNumber, email: parsed.entities.email ?? fallback.entities.email, mentionedDocuments: parsed.entities.mentionedDocuments.length ? parsed.entities.mentionedDocuments : fallback.entities.mentionedDocuments }, requiresHumanReview: parsed.requiresHumanReview || parsed.intent === "pay_invoice" || parsed.intent === "create_complaint" };
   } catch {
     return fallback;
   }

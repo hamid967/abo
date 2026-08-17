@@ -31,6 +31,7 @@ export default function AdminDashboardScreen() {
 
   const dashboard = trpc.adminDashboard.overview.useQuery({ status, search }, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
   const workload = trpc.adminDashboard.workload.useQuery(undefined, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
+  const dailyDueStatus = trpc.adminDashboard.dailyDueStatus.useQuery(undefined, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
   const audit = trpc.audit.list.useQuery({ limit: 10 }, { enabled: isAuthenticated && (account?.role === "admin" || account?.role === "super_admin"), retry: false });
   const updateApprovalAlertSettings = trpc.adminDashboard.updateApprovalAlertSettings.useMutation();
 
@@ -73,6 +74,8 @@ export default function AdminDashboardScreen() {
       </View>
       <Text style={[styles.approvalRiskCount, !hasApprovalsAtRisk && styles.approvalRiskCountClear]}>{metrics.approvalsExpiringSoon}</Text>
     </View>
+
+    {dailyDueStatus.data && <View accessibilityRole="alert" style={[styles.approvalRisk, (!dailyDueStatus.data.enabled || dailyDueStatus.data.stale) && styles.approvalRiskWarning]}><View style={styles.approvalRiskIcon}><Ionicons name={dailyDueStatus.data.enabled && !dailyDueStatus.data.stale ? "checkmark-circle-outline" : "time-outline"} size={22} color={dailyDueStatus.data.enabled && !dailyDueStatus.data.stale ? "#0B5D45" : "#9A6700"} /></View><View style={styles.approvalRiskCopy}><Text style={[styles.approvalRiskTitle, dailyDueStatus.data.enabled && !dailyDueStatus.data.stale && styles.approvalRiskTitleClear]}>حالة الفحص اليومي</Text><Text style={styles.approvalRiskBody}>{!dailyDueStatus.data.enabled ? "الفحص غير مفعّل؛ راجع إعداد الجدولة." : dailyDueStatus.data.stale ? "لم يسجل الفحص نجاحاً حديثاً؛ راجع سجل التشغيل." : `آخر نجاح: ${new Date(dailyDueStatus.data.lastSuccessAt ?? dailyDueStatus.data.lastRunAt!).toLocaleString("ar-SA")}`}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="تحديث حالة الفحص اليومي" onPress={() => void dailyDueStatus.refetch()} style={styles.scanRefresh}><Ionicons name="refresh-outline" size={19} color="#0B5D45" /></Pressable></View>}
 
     <View style={styles.alertWindowSettings}>
       <View style={styles.alertWindowHeader}><Ionicons name="options-outline" size={18} color="#0B5D45" /><View style={styles.alertWindowCopy}><Text style={styles.alertWindowTitle}>إعدادات تنبيه الموافقين</Text><Text style={styles.alertWindowBody}>اختر الفترة التي يظهر فيها عدّاد الموافقات القريبة من الانتهاء.</Text></View></View>
@@ -121,12 +124,14 @@ const styles = StyleSheet.create({
   metricLabel: { color: "#5B7165", fontSize: 10, fontWeight: "700", marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   approvalRisk: { alignItems: "center", backgroundColor: "#FEF1EF", borderColor: "#F1C8C3", borderRadius: 18, borderWidth: 1, flexDirection: "row-reverse", gap: 11, marginTop: 13, padding: 13 },
   approvalRiskClear: { backgroundColor: "#EDF8F0", borderColor: "#CBE6D1" },
+  approvalRiskWarning: { backgroundColor: "#FFF7E8", borderColor: "#F0D5A5" },
   approvalRiskIcon: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
   approvalRiskCopy: { alignItems: "flex-end", flex: 1 },
   approvalRiskTitle: { color: "#8B241B", fontSize: 13, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
   approvalRiskTitleClear: { color: "#0B5D45" },
   approvalRiskBody: { color: "#72514C", fontSize: 10, lineHeight: 16, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   approvalRiskCount: { color: "#B42318", fontSize: 28, fontWeight: "900" }, approvalRiskCountClear: { color: "#0B5D45" },
+  scanRefresh: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 13, height: 36, justifyContent: "center", width: 36 },
   alertWindowSettings: { backgroundColor: "#F7FBF8", borderColor: "#DCEADF", borderRadius: 16, borderWidth: 1, marginTop: 10, padding: 13 },
   alertWindowHeader: { alignItems: "center", flexDirection: "row-reverse", gap: 8 }, alertWindowCopy: { alignItems: "flex-end", flex: 1 },
   alertWindowTitle: { color: "#0B5D45", fontSize: 12, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },

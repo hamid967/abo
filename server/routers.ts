@@ -252,7 +252,7 @@ export const appRouter = router({
           : (input.language === "ar" ? `أبشر، سجّلت اللي ذكرته. ${intake.reply}` : `I recorded what you shared. ${intake.reply}`);
         await db.appendConversationMessage({ ownerUserId: ctx.user.id, conversationId: input.conversationId, role: "assistant", content: reply, metadata: { intent: detection.intent, nextField: intake.field, readyForReview: intake.readyForReview } });
         await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.intent_detected", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { intent: detection.intent, confidence: detection.confidence, humanReview: detection.requiresHumanReview } });
-        return { detection, reply, draft: updatedSession?.draft ?? null };
+        return { detection, intake, reply, draft: updatedSession?.draft ?? null };
       } catch (error) {
         const message = error instanceof Error ? error.message : "INVALID_MESSAGE";
         if (message === "SENSITIVE_CONVERSATION_CONTENT" || message === "INVALID_CHAT_MESSAGE") throw new TRPCError({ code: "BAD_REQUEST", message: "Sensitive or invalid message content." });
@@ -672,6 +672,14 @@ export const appRouter = router({
     approvalAlertSettings: protectedProcedure.query(async ({ ctx }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
       return db.getAdminApprovalAlertSettings();
+    }),
+    dailyDueStatus: protectedProcedure.query(async ({ ctx }) => {
+      if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });
+      const schedule = await db.getDailyDueScanSchedule();
+      const lastRunAt = schedule?.lastRunAt ?? null;
+      const stale = !lastRunAt || Date.now() - new Date(lastRunAt).getTime() > 30 * 60 * 60 * 1000;
+      await db.createAuditLog({ actorUserId: ctx.user.id, action: "admin.daily_due_status_view", resourceType: "automation_schedule", resourceId: "daily_due_scan", metadata: { enabled: Boolean(schedule?.enabled), stale } });
+      return { enabled: Boolean(schedule?.enabled), lastRunAt, lastSuccessAt: schedule?.lastSuccessAt ?? null, lastSummary: schedule?.lastSummary ?? null, stale };
     }),
     updateApprovalAlertSettings: protectedProcedure.input(z.object({ approvalAlertWindowHours: z.union([z.literal(24), z.literal(48), z.literal(72)]) })).mutation(async ({ ctx, input }) => {
       if (!canViewSystemDashboard(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required." });

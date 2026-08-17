@@ -59,6 +59,7 @@ export default function RequestIntakeChatScreen() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatLine[]>([]);
+  const [smartSuggestions, setSmartSuggestions] = useState<string[]>([]);
   const [draftData, setDraftData] = useState<DraftData>({});
   const [validation, setValidation] = useState<ValidationItem[]>([]);
   const [terms, setTerms] = useState(false);
@@ -105,12 +106,14 @@ export default function RequestIntakeChatScreen() {
     const message = (quickValue ?? input).trim();
     if (!message || !conversationId || send.isPending) return;
     setInput("");
+    setSmartSuggestions([]);
     const id = `${Date.now()}`;
     setMessages((current) => [...current, { id: `${id}-user`, role: "user", text: message }]);
     try {
       const response = await send.mutateAsync({ conversationId, message, language: locale });
       if (response.draft?.structuredData && typeof response.draft.structuredData === "object") setDraftData(response.draft.structuredData as DraftData);
       setMessages((current) => [...current, { id: `${id}-assistant`, role: "assistant", text: response.reply }]);
+      setSmartSuggestions(response.intake.suggestions);
       await detail.refetch();
     } catch { setMessages((current) => [...current, { id: `${id}-error`, role: "assistant", text: copy.error }]); }
   }
@@ -231,7 +234,7 @@ export default function RequestIntakeChatScreen() {
       const session = await start.mutateAsync({ language: locale, idempotencyKey: uuid() });
       if (!session.conversation) return;
       setConversationId(session.conversation.id);
-      setDraftData({}); setMessages([{ id: "welcome", role: "assistant", text: copy.welcome }]); setValidation([]); setTerms(false); setPrivacy(false); setSubmissionConsent(false); setSubmitted(null);
+      setDraftData({}); setMessages([{ id: "welcome", role: "assistant", text: copy.welcome }]); setSmartSuggestions([]); setValidation([]); setTerms(false); setPrivacy(false); setSubmissionConsent(false); setSubmitted(null);
       await drafts.refetch();
     } catch { setMessages((current) => [...current, { id: `${Date.now()}-restart-error`, role: "assistant", text: copy.error }]); }
   }
@@ -254,6 +257,7 @@ export default function RequestIntakeChatScreen() {
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       {activePlaybook.data ? <PlaybookJourney playbook={activePlaybook.data} isArabic={isArabic} direction={direction} /> : null}
       {messages.map((message) => <View key={message.id} style={[styles.message, message.role === "user" ? styles.userMessage : styles.assistantMessage]}><Text style={[styles.messageText, message.role === "assistant" && styles.assistantText, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{message.text}</Text></View>)}
+      {smartSuggestions.length && conversationId && !busy ? <View style={[styles.quickList, { alignItems: isArabic ? "flex-end" : "flex-start" }]}><Text style={[styles.draftLabel, { writingDirection: direction }]}>{isArabic ? "اقتراحات للخطوة التالية" : "Suggested next steps"}</Text>{smartSuggestions.map((suggestion) => <Pressable key={suggestion} accessibilityRole="button" onPress={() => void sendMessage(suggestion)} style={styles.quick}><Text style={[styles.quickText, { writingDirection: direction }]}>{suggestion}</Text></Pressable>)}</View> : null}
       {!messages.some((message) => message.role === "user") && conversationId ? <View style={[styles.quickList, { alignItems: isArabic ? "flex-end" : "flex-start" }]}>{(isTransactionFlow ? (isArabic ? ["المستفيد فرد", "المستفيد منشأة", "المستفيد شركة"] : ["The beneficiary is an individual", "The beneficiary is an establishment", "The beneficiary is a company"]) : copy.quick).map((item) => <Pressable key={item} onPress={() => void sendMessage(item)} style={styles.quick}><Text style={[styles.quickText, { writingDirection: direction }]}>{item}</Text></Pressable>)}</View> : null}
       {busy ? <View style={[styles.typing, { flexDirection: isArabic ? "row-reverse" : "row" }]}><ActivityIndicator size="small" color="#0B5D45" /><Text style={[styles.typingText, { writingDirection: direction }]}>{copy.wait}</Text></View> : null}
       {conversationId ? <DraftSummary draft={draftData} direction={direction} isArabic={isArabic} saving={updateDraft.isPending} onSave={saveField} /> : null}
