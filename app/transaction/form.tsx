@@ -83,12 +83,14 @@ export default function TransactionFormScreen() {
     <ScreenContainer edges={["top", "bottom", "left", "right"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.nav}>
-            <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-              <Ionicons name="close" size={23} color="#172033" />
-            </Pressable>
-            <View style={styles.navText}><Text style={styles.title}>{existing ? "تعديل المعاملة" : "إضافة معاملة"}</Text><Text style={styles.subtitle}>احفظ التفاصيل التي تحتاج الرجوع إليها</Text></View>
-          </View>
+            <View style={styles.nav}>
+              <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+                <Ionicons name="close" size={23} color="#172033" />
+              </Pressable>
+              <View style={styles.navText}><Text style={styles.title}>{existing ? "تعديل المعاملة" : "إضافة معاملة"}</Text><Text style={styles.subtitle}>احفظ التفاصيل التي تحتاج الرجوع إليها</Text></View>
+            </View>
+
+            {!existing ? <Pressable accessibilityRole="button" accessibilityLabel="إضافة معاملة عبر المحادثة الذكية" onPress={() => router.replace("/assistant/request-intake?flow=transaction" as never)} style={({ pressed }) => [styles.smartIntakeCard, pressed && styles.pressed]}><Ionicons name="chatbubbles-outline" size={22} color="#0B5D45" /><View style={styles.smartIntakeCopy}><Text style={styles.smartIntakeTitle}>تبي تضيفها بالمحادثة؟</Text><Text style={styles.smartIntakeBody}>أبو مشعل يجمع بيانات المعاملة سؤالاً بسؤال، ثم يعرضها لك للمراجعة قبل الإنشاء.</Text></View><Ionicons name="chevron-back" size={18} color="#0B5D45" /></Pressable> : null}
 
           <FormField label="اسم المعاملة" value={title} onChangeText={setTitle} placeholder="مثال: تجديد رخصة القيادة" required />
           <FormField label="الجهة الحكومية" value={agency} onChangeText={setAgency} placeholder="مثال: إدارة المرور" required />
@@ -158,6 +160,10 @@ const styles = StyleSheet.create({
   navText: { alignItems: "flex-end", flex: 1 },
   title: { color: "#172033", fontSize: 22, fontWeight: "800", writingDirection: "rtl" },
   subtitle: { color: "#667085", fontSize: 12, marginTop: 3, writingDirection: "rtl" },
+  smartIntakeCard: { alignItems: "center", backgroundColor: "#F2F9F4", borderColor: "#BFDCC7", borderRadius: 16, borderWidth: 1, flexDirection: "row-reverse", gap: 10, marginBottom: 22, padding: 13 },
+  smartIntakeCopy: { alignItems: "flex-end", flex: 1 },
+  smartIntakeTitle: { color: "#17382F", fontSize: 13, fontWeight: "900", writingDirection: "rtl" },
+  smartIntakeBody: { color: "#49665B", fontSize: 11, lineHeight: 17, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   field: { marginBottom: 18 },
   fieldLabel: { color: "#344054", fontSize: 13, fontWeight: "800", marginBottom: 8, textAlign: "right", writingDirection: "rtl" },
   input: { backgroundColor: "#FFFFFF", borderColor: "#DCE2EA", borderRadius: 14, borderWidth: 1, color: "#172033", fontSize: 15, minHeight: 52, paddingHorizontal: 14, writingDirection: "rtl" },

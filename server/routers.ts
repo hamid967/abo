@@ -9,6 +9,7 @@ import * as db from "./db";
 import { answerGuidanceQuestion, guideRequestIntake, requestIntakeStageSchema } from "./abu-mishal-assistant";
 import { detectRequestIntent, draftPatchFromDetection } from "./intent-detection";
 import { requestDraftPatchSchema } from "./request-draft-policy";
+import { nextTransactionIntakeQuestion } from "./transaction-intake-chat";
 import { isCloudPayloadWithinLimit } from "./cloud-sync";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { emitAndProcessAutomationEvent, previewAutomationRule } from "./automation-engine";
@@ -227,10 +228,12 @@ export const appRouter = router({
         const draftPatch = draftPatchFromDetection(detection);
         const updatedSession = Object.keys(draftPatch).length ? await db.updateRequestDraftFields({ ownerUserId: ctx.user.id, conversationId: input.conversationId, patch: draftPatch }) : session;
         if (session.conversation.currentState === "started") await db.saveConversationProgress({ ownerUserId: ctx.user.id, conversationId: input.conversationId, nextState: "identifying_intent" });
-        const reply = input.language === "ar"
-          ? (detection.requiresHumanReview ? "شكرًا، سيتولى فريق المتابعة مراجعة هذا الطلب معك. لن ننفذ أي إجراء حساس عبر المحادثة." : "أبشر، سجلت التفاصيل الأولية. سأكمل معك سؤالاً واحداً في كل مرة قبل عرض الملخص للمراجعة.")
-          : (detection.requiresHumanReview ? "Thank you. The support team will review this with you; no sensitive action will be completed in chat." : "I recorded the initial details. I will continue with one main question at a time before showing a review summary.");
-        await db.appendConversationMessage({ ownerUserId: ctx.user.id, conversationId: input.conversationId, role: "assistant", content: reply, metadata: { intent: detection.intent } });
+        const structuredData = updatedSession?.draft?.structuredData && typeof updatedSession.draft.structuredData === "object" && !Array.isArray(updatedSession.draft.structuredData) ? updatedSession.draft.structuredData as Record<string, unknown> : {};
+        const intake = nextTransactionIntakeQuestion(structuredData, input.language);
+        const reply = detection.requiresHumanReview
+          ? (input.language === "ar" ? "شكرًا، سيتولى فريق المتابعة مراجعة هذا الطلب معك. لن ننفذ أي إجراء حساس عبر المحادثة." : "Thank you. The support team will review this with you; no sensitive action will be completed in chat.")
+          : (input.language === "ar" ? `أبشر، سجّلت اللي ذكرته. ${intake.reply}` : `I recorded what you shared. ${intake.reply}`);
+        await db.appendConversationMessage({ ownerUserId: ctx.user.id, conversationId: input.conversationId, role: "assistant", content: reply, metadata: { intent: detection.intent, nextField: intake.field, readyForReview: intake.readyForReview } });
         await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.intent_detected", resourceType: "ai_conversation", resourceId: input.conversationId, metadata: { intent: detection.intent, confidence: detection.confidence, humanReview: detection.requiresHumanReview } });
         return { detection, reply, draft: updatedSession?.draft ?? null };
       } catch (error) {

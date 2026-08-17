@@ -17,6 +17,7 @@ const intentResultSchema = z.object({
     beneficiaryType: z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]).nullable(),
     serviceName: z.string().max(180).nullable(),
     entityName: z.string().max(180).nullable(),
+    title: z.string().max(255).nullable(),
     description: z.string().max(900).nullable(),
     transactionNumber: z.string().max(96).nullable(),
     referenceNumber: z.string().max(96).nullable(),
@@ -36,7 +37,7 @@ const intentResultSchema = z.object({
 export type IntentDetection = z.infer<typeof intentResultSchema>;
 
 const disallowedSecretPattern = /(?:password|passcode|otp|cvv|verification\s*code|كلمة\s*المرور|رمز\s*(?:التحقق|التأكيد)|بيانات\s*الدخول|رقم\s*البطاقة)/i;
-const emptyEntities: IntentDetection["entities"] = { beneficiaryType: null, serviceName: null, entityName: null, description: null, transactionNumber: null, referenceNumber: null, city: null, branch: null, priority: null, requestedDate: null, beneficiaryName: null, phoneNumber: null, email: null, mentionedDocuments: [] };
+const emptyEntities: IntentDetection["entities"] = { beneficiaryType: null, serviceName: null, entityName: null, title: null, description: null, transactionNumber: null, referenceNumber: null, city: null, branch: null, priority: null, requestedDate: null, beneficiaryName: null, phoneNumber: null, email: null, mentionedDocuments: [] };
 
 export function containsDisallowedChatSecret(message: string) {
   return disallowedSecretPattern.test(message);
@@ -103,6 +104,7 @@ export function draftPatchFromDetection(detection: IntentDetection): RequestDraf
     ...(entities.beneficiaryType ? { beneficiaryType: entities.beneficiaryType } : {}),
     ...(entities.serviceName ? { serviceName: entities.serviceName } : {}),
     ...(entities.entityName ? { entityName: entities.entityName } : {}),
+    ...(entities.title ? { title: entities.title } : {}),
     ...(entities.description ? { description: entities.description } : {}),
     ...(entities.city ? { city: entities.city } : {}),
     ...(entities.branch ? { branch: entities.branch } : {}),

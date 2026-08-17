@@ -27,6 +27,8 @@ describe("executive assistant entry UI", () => {
   });
 
   it("routes the main transaction entry to chat intake", () => {
-    expect(transactions).toContain('router.push("/assistant/request-intake" as never)');
+    expect(transactions).toContain('router.push("/assistant/request-intake?flow=transaction" as never)');
+    expect(screen).toContain('const isTransactionFlow = flow === "transaction"');
+    expect(screen).toContain("TransactionIntakeSteps");
   });
 });
