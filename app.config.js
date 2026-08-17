@@ -1,4 +1,5 @@
 require("./scripts/load-env.cjs");
+const fs = require("node:fs");
 
 const rawBundleId = "com.app.governmenttransactionstracker";
 const bundleId = rawBundleId
@@ -12,6 +13,8 @@ const bundleId = rawBundleId
   .join(".") || "space.manus.app";
 
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
+const fcmConfigPath = "./google-services.json";
+const hasFcmConfig = fs.existsSync(fcmConfigPath);
 
 /** @type {import("expo/config").ExpoConfig} */
 const config = {
@@ -40,6 +43,7 @@ const config = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
+    ...(hasFcmConfig ? { googleServicesFile: fcmConfigPath } : {}),
     permissions: ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "READ_CALENDAR", "WRITE_CALENDAR"],
     intentFilters: [{
       action: "VIEW",
@@ -59,7 +63,7 @@ const config = {
     "expo-web-browser",
     "expo-document-picker",
     ["expo-font", { fonts: ["./assets/fonts/Cairo-Regular.ttf", "./assets/fonts/Cairo-SemiBold.ttf", "./assets/fonts/Cairo-Bold.ttf", "./assets/fonts/Cairo-ExtraBold.ttf"] }],
-    ["expo-notifications", { defaultChannel: "government-deadlines", color: "#0B5D45", enableBackgroundRemoteNotifications: true }],
+    ["expo-notifications", { icon: "./assets/images/android-icon-monochrome.png", color: "#0B5D45", defaultChannel: "government-deadlines", enableBackgroundRemoteNotifications: true }],
     ["expo-calendar", { calendarPermission: "يسمح $(PRODUCT_NAME) بإضافة مواعيد المهام إلى تقويمك عند اختيارك ذلك.", remindersPermission: "يسمح $(PRODUCT_NAME) بإضافة تذكيرات المهام إلى جهازك عند اختيارك ذلك." }],
     ["expo-local-authentication", { faceIDPermission: "يسمح $(PRODUCT_NAME) باستخدام Face ID لتسهيل الدخول الآمن إلى حسابك." }],
     ["expo-audio", { microphonePermission: "يسمح $(PRODUCT_NAME) بالوصول إلى الميكروفون عند استخدام ميزات الصوت." }],

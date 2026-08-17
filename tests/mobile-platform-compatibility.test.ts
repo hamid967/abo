@@ -25,6 +25,10 @@ describe("mobile platform compatibility", () => {
     expect(config).toContain('"expo-calendar"');
     expect(config).toContain("READ_CALENDAR");
     expect(config).toContain("WRITE_CALENDAR");
+    expect(config).toContain("fcmConfigPath");
+    expect(config).toContain("googleServicesFile: fcmConfigPath");
+    expect(config).toContain("enableBackgroundRemoteNotifications: true");
+    expect(config).toContain('icon: "./assets/images/android-icon-monochrome.png"');
   });
 
   it("registers the cross-platform routes and lets long settings content scroll", () => {
