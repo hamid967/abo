@@ -282,7 +282,12 @@ export const appRouter = router({
     }),
   }),
   approvals: router({
-    inbox: protectedProcedure.query(async ({ ctx }) => db.listPendingApprovalsForApprover(ctx.user.id, ctx.user.role)),
+    inbox: protectedProcedure.input(z.object({
+      resourceType: z.enum(["task", "service_request"]).optional(),
+      status: z.enum(["all", "active", "expired"]).optional(),
+      sortBy: z.enum(["createdAt", "expiresAt", "dueAt"]).optional(),
+      sortOrder: z.enum(["asc", "desc"]).optional(),
+    }).optional()).query(async ({ ctx, input }) => db.listPendingApprovalsForApprover(ctx.user.id, ctx.user.role, input)),
     forResource: protectedProcedure.input(z.object({ resourceType: z.enum(["task", "service_request"]), resourceId: z.string().trim().min(1).max(64) })).query(async ({ ctx, input }) => {
       const approvals = await db.listApprovalsForResource(ctx.user.id, input.resourceType, input.resourceId);
       if (!approvals) throw new TRPCError({ code: "NOT_FOUND" });

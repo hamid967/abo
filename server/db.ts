@@ -1331,6 +1331,12 @@ export async function setTaskChecklistItemCompletion(input: { userId: number; ch
 export type ApprovalResourceType = "task" | "service_request";
 export type ApprovalRole = "user" | "employee" | "supervisor" | "admin" | "super_admin";
 export type ApprovalDecision = "approved" | "rejected" | "changes_requested" | "information_requested";
+export type ApprovalInboxOptions = {
+  resourceType?: ApprovalResourceType;
+  status?: "all" | "active" | "expired";
+  sortBy?: "createdAt" | "expiresAt" | "dueAt";
+  sortOrder?: "asc" | "desc";
+};
 
 async function approvalResourceOwner(userId: number, resourceType: ApprovalResourceType, resourceId: string) {
   const db = await getDb();
@@ -1373,7 +1379,7 @@ export async function listApprovalsForResource(userId: number, resourceType: App
   return requests.map((request) => ({ ...request, steps: steps.filter((step) => step.approvalRequestId === request.id) }));
 }
 
-export async function listPendingApprovalsForApprover(userId: number, userRole: ApprovalRole) {
+export async function listPendingApprovalsForApprover(userId: number, userRole: ApprovalRole, options: ApprovalInboxOptions = {}) {
   const db = await getDb();
   if (!db) return [] as Array<{ approvalRequestId: string; stepId: number; stepLabel: string; routingMode: "sequential" | "parallel"; createdAt: Date; expiresAt: Date | null; resourceType: ApprovalResourceType; resourceId: string; resourceLabel: string }>;
   const candidates = await db.select({ request: approvalRequests, step: approvalSteps }).from(approvalSteps).innerJoin(approvalRequests, eq(approvalSteps.approvalRequestId, approvalRequests.id)).where(and(
@@ -1385,11 +1391,33 @@ export async function listPendingApprovalsForApprover(userId: number, userRole: 
   const requestIds = [...new Set(candidates.map((row) => row.request.id))];
   const allSteps = await db.select().from(approvalSteps).where(inArray(approvalSteps.approvalRequestId, requestIds)).orderBy(asc(approvalSteps.stepOrder));
   const taskIds = candidates.filter((row) => row.request.resourceType === "task").map((row) => Number(row.request.resourceId)).filter((id) => Number.isInteger(id) && id > 0);
+  const serviceRequestIds = candidates.filter((row) => row.request.resourceType === "service_request").map((row) => Number(row.request.resourceId)).filter((id) => Number.isInteger(id) && id > 0);
   const taskRows = taskIds.length ? await db.select({ id: tasks.id, title: tasks.title, slaDueAt: tasks.slaDueAt, dueAt: tasks.dueAt }).from(tasks).where(inArray(tasks.id, [...new Set(taskIds)])) : [];
+  const serviceRequestRows = serviceRequestIds.length ? await db.select({ id: serviceRequests.id, title: serviceRequests.title, desiredDueAt: serviceRequests.desiredDueAt }).from(serviceRequests).where(inArray(serviceRequests.id, [...new Set(serviceRequestIds)])) : [];
   const taskLabels = new Map(taskRows.map((task) => [String(task.id), { label: task.title, dueAt: task.slaDueAt ?? task.dueAt ?? null }]));
-  return candidates.filter(({ request, step }) => request.routingMode !== "sequential" || allSteps.filter((candidate) => candidate.approvalRequestId === request.id && candidate.stepOrder < step.stepOrder).every((candidate) => ["approved", "skipped"].includes(candidate.status))).map(({ request, step }) => {
-    const task = taskLabels.get(request.resourceId);
-    return { approvalRequestId: request.id, stepId: step.id, stepLabel: step.label, routingMode: request.routingMode, createdAt: request.createdAt, expiresAt: request.expiresAt ?? null, resourceType: request.resourceType, resourceId: request.resourceId, resourceLabel: task?.label ?? (request.resourceType === "task" ? `مهمة #${request.resourceId}` : `طلب خدمة #${request.resourceId}`), dueAt: task?.dueAt ?? null };
+  const serviceRequestLabels = new Map(serviceRequestRows.map((request) => [String(request.id), { label: request.title, dueAt: request.desiredDueAt ?? null }]));
+  const actionable = candidates.filter(({ request, step }) => request.routingMode !== "sequential" || allSteps.filter((candidate) => candidate.approvalRequestId === request.id && candidate.stepOrder < step.stepOrder).every((candidate) => ["approved", "skipped"].includes(candidate.status))).map(({ request, step }) => {
+    const resource = request.resourceType === "task" ? taskLabels.get(request.resourceId) : serviceRequestLabels.get(request.resourceId);
+    return { approvalRequestId: request.id, stepId: step.id, stepLabel: step.label, routingMode: request.routingMode, createdAt: request.createdAt, expiresAt: request.expiresAt ?? null, resourceType: request.resourceType, resourceId: request.resourceId, resourceLabel: resource?.label ?? (request.resourceType === "task" ? `مهمة #${request.resourceId}` : `طلب خدمة #${request.resourceId}`), dueAt: resource?.dueAt ?? null };
+  });
+  const now = new Date();
+  const filtered = actionable.filter((item) => {
+    if (options.resourceType && item.resourceType !== options.resourceType) return false;
+    const isExpired = Boolean(item.expiresAt && item.expiresAt <= now);
+    if (options.status === "active" && isExpired) return false;
+    if (options.status === "expired" && !isExpired) return false;
+    return true;
+  });
+  const sortBy = options.sortBy ?? "createdAt";
+  const sortOrder = options.sortOrder ?? "asc";
+  return filtered.sort((left, right) => {
+    const leftValue = left[sortBy];
+    const rightValue = right[sortBy];
+    if (!leftValue && !rightValue) return left.createdAt.getTime() - right.createdAt.getTime();
+    if (!leftValue) return 1;
+    if (!rightValue) return -1;
+    const comparison = leftValue.getTime() - rightValue.getTime();
+    return sortOrder === "desc" ? -comparison : comparison;
   });
 }
 

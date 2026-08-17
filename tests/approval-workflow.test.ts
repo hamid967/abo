@@ -39,4 +39,17 @@ describe("approval workflow safeguards", () => {
     expect(inbox).toContain("changes_requested");
     expect(inbox).toContain("information_requested");
   });
+
+  it("filters and sorts only the already-authorized pending approval inbox", () => {
+    expect(db).toContain("ApprovalInboxOptions");
+    expect(db).toContain('status?: "all" | "active" | "expired"');
+    expect(db).toContain('sortBy?: "createdAt" | "expiresAt" | "dueAt"');
+    expect(db).toContain("const filtered = actionable.filter");
+    expect(db).toContain("return filtered.sort");
+    expect(router).toContain('status: z.enum(["all", "active", "expired"])');
+    expect(router).toContain('sortBy: z.enum(["createdAt", "expiresAt", "dueAt"])');
+    expect(inbox).toContain("تصفية وفرز");
+    expect(inbox).toContain("expiresSoonest");
+    expect(inbox).toContain("accessibilityState={{ selected");
+  });
 });
