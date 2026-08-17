@@ -18,6 +18,8 @@ import { validateQuietHours } from "./notification-preferences-policy";
 import { checkAssistantRateLimit } from "./assistant-rate-limit";
 import { summarizeDocumentText } from "./document-summary";
 import { getGovernanceGapDashboard } from "./governance-gap-summary";
+import { transcribeVoiceIntake } from "./voice-intake";
+import { voiceIntakeMimeTypes } from "./voice-intake-policy";
 
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -39,6 +41,21 @@ export const appRouter = router({
       return {
         success: true,
       } as const;
+    }),
+  }),
+  voice: router({
+    transcribeIntake: protectedProcedure.input(z.object({ audioBase64: z.string().min(16).max(7_000_000), mimeType: z.enum(voiceIntakeMimeTypes), language: z.enum(["ar", "en"]).default("ar") })).mutation(async ({ ctx, input }) => {
+      const allowance = checkAssistantRateLimit({ userId: ctx.user.id, action: "voice" });
+      if (!allowance.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "VOICE_RATE_LIMITED" });
+      try {
+        const result = await transcribeVoiceIntake(input);
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "assistant.voice_transcribed", resourceType: "ai_conversation", metadata: { characterCount: result.text.length, language: result.language, durationSeconds: result.duration } });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "VOICE_TRANSCRIPTION_FAILED";
+        if (["VOICE_FORMAT_NOT_ALLOWED", "VOICE_FILE_TOO_LARGE", "VOICE_TRANSCRIPTION_EMPTY", "VOICE_TRANSCRIPTION_FAILED", "VOICE_SERVICE_UNAVAILABLE"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
     }),
   }),
   requests: router({

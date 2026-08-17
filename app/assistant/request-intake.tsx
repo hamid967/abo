@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile } from "expo-file-system";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -45,6 +46,9 @@ export default function RequestIntakeChatScreen() {
   const removeDocument = trpc.executiveAssistant.removeDocument.useMutation();
   const cancelDraft = trpc.executiveAssistant.cancelDraft.useMutation();
   const deleteConversationData = trpc.executiveAssistant.deleteConversationData.useMutation();
+  const transcribeVoice = trpc.voice.transcribeIntake.useMutation();
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatLine[]>([]);
@@ -54,6 +58,7 @@ export default function RequestIntakeChatScreen() {
   const [privacy, setPrivacy] = useState(false);
   const [submissionConsent, setSubmissionConsent] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<{ requestId: number; transactionId: number | null; requestNumber?: string } | null>(null);
   const startedKey = useRef(uuid());
   const startAttempted = useRef(false);
@@ -65,7 +70,7 @@ export default function RequestIntakeChatScreen() {
   const activePlaybook = trpc.playbooks.activeForService.useQuery({ serviceId: serviceId ?? 0 }, { enabled: Boolean(serviceId) });
   const state = detail.data?.conversation?.currentState;
   const completion = detail.data?.draft?.completionPercentage ?? drafts.data?.[0]?.completionPercentage ?? 0;
-  const busy = start.isPending || send.isPending || updateDraft.isPending || validateDraft.isPending || prepareReview.isPending || recordConsent.isPending || submitDraft.isPending || uploadDocument.isPending || attachDocument.isPending || removeDocument.isPending || cancelDraft.isPending || deleteConversationData.isPending;
+  const busy = start.isPending || send.isPending || updateDraft.isPending || validateDraft.isPending || prepareReview.isPending || recordConsent.isPending || submitDraft.isPending || uploadDocument.isPending || attachDocument.isPending || removeDocument.isPending || cancelDraft.isPending || deleteConversationData.isPending || transcribeVoice.isPending;
   const copy = useMemo(() => isArabic ? {
     title: "المساعد التنفيذي للطلبات", subtitle: "أرتّب طلبك خطوة بخطوة، وأوقف قبل الإرسال عشان تراجع وتوافق بوضوح.", notice: "لا ترسل كلمة مرور أو رمز التحقق أو بيانات بطاقة. أبو مشعل منصة مستقلة ولا يمثل جهة حكومية.", signIn: "سجّل دخولك أول عشان نحفظ المسودة ونكملها معك لاحقاً.", placeholder: "اكتب وش تبي تنجز…", welcome: "أهلًا بك، أنا أبو مشعل. أساعدك في تجهيز طلبك خطوة بخطوة. اكتب الخدمة أو المعاملة اللي تبي تتابعها، حتى لو ما تعرف اسمها الرسمي.", wait: "قاعد أرتّب تفاصيل طلبك…", quick: ["أبي أقدم معاملة جديدة", "أبي أتابع معاملة موجودة", "وش المستندات المطلوبة؟", "أبي أحجز موعد", "أبي أرفع مستند", "عندي استفسار أو شكوى", "ما أعرف نوع الخدمة"], error: "ما قدرنا نحفظ الإجراء الحين. بياناتك الموجودة ما راح تضيع؛ جرّب مرة ثانية.", sending: "إرسال", resume: "مسودتك تنحفظ في حسابك تلقائياً.", review: "تحقق واعرض المراجعة", validationTitle: "نتيجة التحقق", confirmationTitle: "راجع ووافق قبل الإرسال", confirm: "تأكيد وإرسال الطلب", consentTerms: "اطلعت على الشروط", consentPrivacy: "اطلعت على سياسة الخصوصية", consentSubmit: "أوافق صراحةً على إنشاء الطلب داخل أبو مشعل", submitted: "تم إنشاء طلبك داخل أبو مشعل", open: "فتح المعاملة", progress: "اكتمال الطلب" } : {
     title: "Executive request assistant", subtitle: "I organise the request step by step and always pause for your review and explicit consent.", notice: "Do not send passwords, verification codes, or card details. Abu Mishal is independent and does not represent a government authority.", signIn: "Sign in first so your draft can be saved and resumed.", placeholder: "Describe what you want to do…", welcome: "Welcome. I am Abu Mishal. Describe the service or transaction you need, even if you do not know its official name.", wait: "Organising your request…", quick: ["Create a new request", "Track an existing transaction", "Show required documents", "Book an appointment", "Upload a document", "Create an inquiry or complaint", "I do not know the service"], error: "The action could not be saved now. Your existing data is safe; try again.", sending: "Send", resume: "Your draft is saved to your account automatically.", review: "Validate and review", validationTitle: "Validation result", confirmationTitle: "Review and consent before submission", confirm: "Confirm and submit request", consentTerms: "I reviewed the terms", consentPrivacy: "I reviewed the privacy policy", consentSubmit: "I explicitly consent to create this request in Abu Mishal", submitted: "Your request was created in Abu Mishal", open: "Open transaction", progress: "Request completion" }, [isArabic]);
@@ -101,6 +106,34 @@ export default function RequestIntakeChatScreen() {
       setMessages((current) => [...current, { id: `${id}-assistant`, role: "assistant", text: response.reply }]);
       await detail.refetch();
     } catch { setMessages((current) => [...current, { id: `${id}-error`, role: "assistant", text: copy.error }]); }
+  }
+
+  async function toggleVoiceInput() {
+    setVoiceError(null);
+    try {
+      if (recorderState.isRecording) {
+        await audioRecorder.stop();
+        const uri = audioRecorder.uri;
+        if (!uri) throw new Error("VOICE_RECORDING_UNAVAILABLE");
+        const audioFile = new ExpoFile(uri);
+        const audioBase64 = await audioFile.base64();
+        try { audioFile.delete(); } catch { /* Cache cleanup is best-effort. */ }
+        const result = await transcribeVoice.mutateAsync({ audioBase64, mimeType: Platform.OS === "web" ? "audio/webm" : "audio/m4a", language: locale });
+        setInput(result.text);
+        return;
+      }
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setVoiceError(isArabic ? "ما تم السماح للميكروفون. فعّله من إعدادات الجهاز إذا حاب تستخدم الإدخال الصوتي." : "Microphone permission was not granted. Enable it in device settings to use voice input.");
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "VOICE_TRANSCRIPTION_FAILED";
+      setVoiceError(isArabic ? (code.includes("TOO_LARGE") ? "المقطع أطول من الحد المسموح. سجّل رسالة أقصر ثم جرّب." : "ما قدرنا نحوّل التسجيل إلى نص. جرّب مرة ثانية أو اكتب رسالتك.") : (code.includes("TOO_LARGE") ? "The recording exceeds the allowed limit. Record a shorter message and try again." : "The recording could not be converted to text. Try again or type your message."));
+    }
   }
 
   async function saveField(field: EditableField, value: string) {
@@ -210,7 +243,7 @@ export default function RequestIntakeChatScreen() {
       {submitted ? <View style={styles.successCard}><Ionicons name="checkmark-circle" size={34} color="#1E8C5A" /><Text style={styles.successTitle}>{copy.submitted}</Text><Text style={styles.successNumber}>{submitted.requestNumber ?? `#${submitted.requestId}`}</Text>{submitted.transactionId ? <Pressable onPress={() => router.replace(`/transaction/${submitted.transactionId}` as never)} style={styles.openButton}><Text style={styles.openText}>{copy.open}</Text></Pressable> : null}</View> : null}
       {conversationId ? <View style={styles.lifecycleCard}><Text style={styles.lifecycleHint}>{isArabic ? "إدارة المسودة وبيانات المحادثة" : "Manage draft and conversation data"}</Text><View style={styles.lifecycleActions}>{state !== "submitted" ? <Pressable disabled={busy} onPress={() => void startNewDraft()} style={[styles.lifecycleButton, busy && styles.disabled]}><Ionicons name="add-circle-outline" size={16} color="#0B5D45" /><Text style={styles.lifecycleText}>{isArabic ? "بدء طلب جديد" : "Start new request"}</Text></Pressable> : null}<Pressable disabled={busy} onPress={confirmDeleteConversation} style={[styles.lifecycleButton, styles.destructiveButton, busy && styles.disabled]}><Ionicons name="trash-outline" size={16} color="#A63D3D" /><Text style={styles.destructiveText}>{isArabic ? "حذف المحادثة" : "Delete conversation"}</Text></Pressable></View></View> : null}
     </ScrollView>
-    {!submitted ? <><View style={[styles.composer, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={input} onChangeText={setInput} multiline editable={Boolean(conversationId) && !send.isPending} placeholder={isTransactionFlow ? (isArabic ? "اكتب إجابتك أو وصف المعاملة…" : "Type your answer or describe the transaction…") : copy.placeholder} placeholderTextColor="#93A39C" style={[styles.input, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]} /><Pressable accessibilityLabel={copy.sending} disabled={!conversationId || send.isPending} onPress={() => void sendMessage()} style={[styles.send, (!conversationId || send.isPending) && styles.disabled]}><Ionicons name="send" size={18} color="#FFFFFF" /></Pressable></View><View style={[styles.footerActions, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Pressable onPress={() => void requestHandoff()} disabled={!conversationId || handoff.isPending} style={[styles.handoff, (!conversationId || handoff.isPending) && styles.disabled]}><Ionicons name="person-outline" size={15} color="#0B5D45" /><Text style={styles.handoffText}>{isArabic ? "التحدث مع موظف" : "Talk to staff"}</Text></Pressable><Text style={[styles.resume, { writingDirection: direction }]}>{copy.resume}</Text></View></> : null}
+    {!submitted ? <><View style={[styles.composer, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={input} onChangeText={setInput} multiline editable={Boolean(conversationId) && !send.isPending && !recorderState.isRecording} placeholder={isTransactionFlow ? (isArabic ? "اكتب إجابتك أو وصف المعاملة…" : "Type your answer or describe the transaction…") : copy.placeholder} placeholderTextColor="#93A39C" style={[styles.input, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]} /><Pressable accessibilityRole="button" accessibilityLabel={recorderState.isRecording ? (isArabic ? "إيقاف التسجيل وتحويله إلى نص" : "Stop recording and transcribe") : (isArabic ? "بدء إدخال صوتي" : "Start voice input")} disabled={!conversationId || transcribeVoice.isPending || (busy && !recorderState.isRecording)} onPress={() => void toggleVoiceInput()} style={[styles.documentAdd, recorderState.isRecording && { backgroundColor: "#A63D3D" }, (!conversationId || transcribeVoice.isPending || (busy && !recorderState.isRecording)) && styles.disabled]}>{transcribeVoice.isPending ? <ActivityIndicator size="small" color="#0B5D45" /> : <Ionicons name={recorderState.isRecording ? "stop" : "mic-outline"} size={19} color={recorderState.isRecording ? "#FFFFFF" : "#0B5D45"} />}</Pressable><Pressable accessibilityLabel={copy.sending} disabled={!conversationId || send.isPending || recorderState.isRecording} onPress={() => void sendMessage()} style={[styles.send, (!conversationId || send.isPending || recorderState.isRecording) && styles.disabled]}><Ionicons name="send" size={18} color="#FFFFFF" /></Pressable></View>{recorderState.isRecording ? <View style={[styles.notice, { flexDirection: isArabic ? "row-reverse" : "row", marginTop: 8 }]}><Ionicons name="radio" size={13} color="#A63D3D" /><Text style={[styles.noticeText, { writingDirection: direction }]}>{isArabic ? "جارٍ التسجيل. اضغط إيقاف لتحويل كلامك إلى نص ومراجعته قبل الإرسال." : "Recording. Tap stop to convert your speech to text for review before sending."}</Text></View> : null}{voiceError ? <Text style={styles.documentError}>{voiceError}</Text> : null}<View style={[styles.footerActions, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Pressable onPress={() => void requestHandoff()} disabled={!conversationId || handoff.isPending} style={[styles.handoff, (!conversationId || handoff.isPending) && styles.disabled]}><Ionicons name="person-outline" size={15} color="#0B5D45" /><Text style={styles.handoffText}>{isArabic ? "التحدث مع موظف" : "Talk to staff"}</Text></Pressable><Text style={[styles.resume, { writingDirection: direction }]}>{copy.resume}</Text></View></> : null}
   </View></KeyboardAvoidingView></ScreenContainer>;
 }
 
