@@ -61,9 +61,14 @@ jobs:
           fetch-depth: 0
 
       - name: Scan repository for secrets
-        uses: docker://zricethezav/gitleaks:v8.24.2
-        with:
-          args: detect --source=/github/workspace --redact --no-banner --verbose
+        shell: bash
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/repo" \
+            --workdir /repo \
+            --entrypoint /bin/sh \
+            zricethezav/gitleaks:v8.24.2 \
+            -c 'git config --global --add safe.directory /repo && gitleaks detect --source=/repo --redact --no-banner --verbose'
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
