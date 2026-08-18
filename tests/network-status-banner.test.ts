@@ -9,5 +9,8 @@ describe("network status banner", () => {
     expect(source).toContain("Network.useNetworkState()");
     expect(source).toContain("isInternetReachable");
     expect(source).toContain("الرفع والمزامنة والإجراءات الجديدة");
+    expect(source).toContain("Network.getNetworkStateAsync()");
+    expect(source).toContain("إعادة المحاولة");
+    expect(source).toContain("عاد اتصال الإنترنت");
   });
 });
