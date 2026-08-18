@@ -1,10 +1,12 @@
-# بناء APK موقّع عبر GitHub Actions
+# بناء APK وAAB موقّع عبر GitHub Actions
 
-يوفر الملف `.github/workflows/android-debug-apk.yml` بناءً يدوياً لتطبيق أبو مشعل على Android. ينتج الخيار `debug` ملف APK للاختبار، وينتج الخيار `release` ملف APK موقّعاً عند تهيئة أسرار keystore.
+يوفر الملف `.github/workflows/android-debug-apk.yml` بناءً يدوياً لتطبيق أبو مشعل على Android. ينتج الخيار `debug` ملف APK للاختبار، وينتج الخيار `release` ملف APK موقّعاً عند تهيئة أسرار keystore، كما ينتج `release` مع صيغة `aab` حزمة Google Play موقّعة.
 
 ## التشغيل
 
-بعد وصول الملف إلى المستودع على GitHub، افتح تبويب **Actions**، واختر **Build Android APK**، ثم اضغط **Run workflow**. اختر `debug` للاختبار السريع أو `release` لإنشاء ملف موقّع. يظهر الملف الناتج ضمن Artifacts عند اكتمال المهمة.
+بعد وصول الملف إلى المستودع على GitHub، افتح تبويب **Actions**، واختر **Build Android Package**، ثم اضغط **Run workflow**. اختر `apk` للاختبار السريع أو التوزيع الداخلي. لإصدار Google Play اختر `release` و`aab`؛ يظهر الملف الناتج ضمن Artifacts عند اكتمال المهمة.
+
+> صيغة AAB مخصصة للتوزيع عبر Google Play ولا تقبل نسخة `debug` في سير العمل.
 
 ## إعداد Firebase اختياري
 
