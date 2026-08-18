@@ -2,11 +2,7 @@ import * as Linking from "expo-linking";
 import * as ReactNative from "react-native";
 import * as SecureStore from "expo-secure-store";
 
-// Extract scheme from bundle ID (last segment timestamp, prefixed with "manus")
-// e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
-const bundleId = "com.app.governmenttransactionstracker";
-const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
-const schemeFromBundleId = `manus${timestamp}`;
+const deepLinkScheme = process.env.EXPO_PUBLIC_DEEP_LINK_SCHEME ?? "abumishal";
 
 const env = {
   portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
@@ -15,7 +11,7 @@ const env = {
   ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
   ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
   apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
-  deepLinkScheme: schemeFromBundleId,
+  deepLinkScheme,
 };
 
 export const OAUTH_PORTAL_URL = env.portal;
@@ -56,6 +52,7 @@ export function getApiBaseUrl(): string {
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";
+// Keep the legacy storage key so existing installations retain their local profile.
 export const USER_INFO_KEY = "manus-runtime-user-info";
 const DEVICE_ID_KEY = "abu-mishal-security-device-id";
 
@@ -157,8 +154,11 @@ export async function completeExpoGoLogin(attempt: ExpoGoLoginAttempt): Promise<
 }> {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) throw new Error("تعذر الاتصال بخادم تسجيل الدخول.");
-  const params = new URLSearchParams({ attemptId: attempt.attemptId, proof: attempt.proof });
-  const response = await fetch(`${baseUrl}/api/oauth/expo-go/complete?${params.toString()}`);
+  const response = await fetch(`${baseUrl}/api/oauth/expo-go/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ attemptId: attempt.attemptId, proof: attempt.proof }),
+  });
   if (response.status === 202) return { status: "pending" };
   if (!response.ok) throw new Error("تعذر إكمال تسجيل الدخول. ابدأ محاولة جديدة.");
   const data = await response.json() as { status: "completed"; app_session_id: string; user: { id: number; openId: string; name: string | null; email: string | null; loginMethod: string | null; lastSignedIn: string } };

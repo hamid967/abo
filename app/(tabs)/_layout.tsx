@@ -19,34 +19,53 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
-          paddingTop: 8,
+          position: Platform.OS === "web" ? "relative" : "absolute",
+          left: 14,
+          right: 14,
+          bottom: Platform.OS === "web" ? 0 : 10,
+          paddingTop: 9,
           paddingBottom: bottomPadding,
           height: tabBarHeight,
-          backgroundColor: colors.background,
+          backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          borderTopWidth: 0.5,
+          borderTopWidth: 1,
+          borderRadius: Platform.OS === "web" ? 0 : 22,
+          shadowColor: "#0B3B31",
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: Platform.OS === "web" ? 0 : 0.12,
+          shadowRadius: 18,
+          elevation: 8,
         },
+        tabBarLabelStyle: { fontFamily: "Cairo-Bold", fontSize: 10 },
+        tabBarItemStyle: { borderRadius: 14 },
+        sceneStyle: { backgroundColor: colors.background },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "الرئيسية",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="house.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="transactions"
         options={{
           title: "معاملاتي",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="tray.full.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="tray.full.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "الإعدادات",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="gearshape.fill" color={color} />
+          ),
         }}
       />
     </Tabs>

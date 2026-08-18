@@ -14,7 +14,11 @@ describe("organization scope protection", () => {
 
   it("enforces organization access before request creation and draft mutation", () => {
     expect(routers).toContain("ORGANIZATION_ACCESS_DENIED");
-    expect(routers).toContain("db.canUseOrganization(ctx.user.id, input.organizationId)");
-    expect(routers).toContain("db.canUseOrganization(ctx.user.id, input.patch.organizationId)");
+    expect(routers).toMatch(
+      /db\.canUseOrganization\(\s*ctx\.user\.id,\s*input\.organizationId,?\s*\)/,
+    );
+    expect(routers).toMatch(
+      /db\.canUseOrganization\(\s*ctx\.user\.id,\s*input\.patch\.organizationId,?\s*\)/,
+    );
   });
 });

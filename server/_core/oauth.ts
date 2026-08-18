@@ -243,11 +243,16 @@ export function registerOAuthRoutes(app: Express) {
     }
   });
 
-  app.get("/api/oauth/expo-go/complete", async (req: Request, res: Response) => {
-    const attemptId = getQueryParam(req, "attemptId");
-    const proof = getQueryParam(req, "proof");
-    if (!attemptId || !proof) {
-      res.status(400).json({ error: "attemptId and proof are required" });
+  app.post("/api/oauth/expo-go/complete", async (req: Request, res: Response) => {
+    const attemptId = typeof req.body?.attemptId === "string" ? req.body.attemptId : undefined;
+    const proof = typeof req.body?.proof === "string" ? req.body.proof : undefined;
+    if (
+      !attemptId ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(attemptId) ||
+      !proof ||
+      !/^[A-Za-z0-9_-]{43}$/.test(proof)
+    ) {
+      res.status(400).json({ error: "A valid attemptId and proof are required" });
       return;
     }
     try {

@@ -26,12 +26,14 @@ describe("service playbooks", () => {
   it("captures the published playbook version and ordered steps when a new request is submitted", () => {
     expect(db).toContain("requestPlaybookAssignments");
     expect(db).toContain('eq(playbookVersions.status, "published")');
-    expect(db).toContain("snapshot: { playbookName");
+    expect(db).toMatch(/snapshot:\s*{\s*playbookName/);
     expect(db).toContain("versionNumber: active.versionNumber");
   });
 
   it("generates only actionable step tasks with a source key protected by a unique database index", () => {
-    expect(schema).toContain('sourceType: mysqlEnum("sourceType", ["manual", "playbook_step", "automation"])');
+    expect(schema).toContain(
+      'sourceType: mysqlEnum("sourceType", ["manual", "playbook_step", "automation"])',
+    );
     expect(schema).toContain('uniqueIndex("tasks_playbook_step_unique")');
     expect(db).toContain("shouldGenerateTaskFromPlaybookStep");
     expect(db).toContain('sourceType: "playbook_step"');
