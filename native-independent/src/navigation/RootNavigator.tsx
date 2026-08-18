@@ -6,12 +6,14 @@ import { MigrationStatusScreen } from "../screens/MigrationStatusScreen";
 import { OAuthCallbackScreen } from "../screens/OAuthCallbackScreen";
 import { TransactionsScreen } from "../screens/TransactionsScreen";
 import { TransactionDetailScreen } from "../screens/TransactionDetailScreen";
+import { TransactionIntakeChatScreen } from "../screens/TransactionIntakeChatScreen";
 import { theme } from "../theme";
 
 export type RootStackParamList = {
   Home: undefined;
   Transactions: undefined;
   TransactionDetail: { transactionId: number };
+  TransactionIntake: undefined;
   MigrationStatus: undefined;
   OAuthCallback: { attempt?: string; code?: string; state?: string };
 };
@@ -34,6 +36,7 @@ export function RootNavigator() {
         <Stack.Screen name="Home" component={HomeScreen} options={{ title: "أبو مشعل" }} />
         <Stack.Screen name="Transactions" component={TransactionsScreen} options={{ title: "المعاملات" }} />
         <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} options={{ title: "تفاصيل المعاملة" }} />
+        <Stack.Screen name="TransactionIntake" component={TransactionIntakeChatScreen} options={{ title: "استلام معاملة" }} />
         <Stack.Screen name="MigrationStatus" component={MigrationStatusScreen} options={{ title: "حالة الترحيل" }} />
         <Stack.Screen name="OAuthCallback" component={OAuthCallbackScreen} options={{ title: "تأكيد الدخول" }} />
       </Stack.Navigator>
