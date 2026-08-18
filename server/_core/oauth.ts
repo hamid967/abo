@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { claimExpoGoOAuthAttempt, createExpoGoOAuthAttempt, failExpoGoOAuthAttempt, getUserByOpenId, markExpoGoOAuthAttemptReady, recordLoginSecurityEvent, removeExpoGoOAuthAttempt, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
+import { ENV } from "./env";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -30,6 +31,15 @@ function getExpoGoCallbackUrl(req: Request, attemptId: string) {
   return `${protocol}://${host}/api/oauth/expo-go/callback?attempt=${encodeURIComponent(attemptId)}`;
 }
 
+function getNativeCallbackUrl(req: Request, attemptId: string) {
+  const host = req.get("host") ?? "";
+  if (!isTrustedManusHost(host)) throw new Error("Untrusted OAuth callback host");
+  const forwardedProtocol = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol = forwardedProtocol === "https" ? "https" : req.protocol;
+  if (protocol !== "https") throw new Error("Native OAuth requires an HTTPS callback");
+  return `${protocol}://${host}/api/oauth/native/callback?attempt=${encodeURIComponent(attemptId)}`;
+}
+
 function encodeOAuthState(redirectUri: string) {
   return Buffer.from(redirectUri, "utf-8").toString("base64");
 }
@@ -45,6 +55,29 @@ export function decodeExpoGoCallbackState(state: string) {
   } catch {
     return undefined;
   }
+}
+
+function decodeNativeCallbackState(state: string) {
+  try {
+    const redirectUri = Buffer.from(state, "base64").toString("utf-8");
+    const url = new URL(redirectUri);
+    if (!isTrustedManusHost(url.host) || url.protocol !== "https:" || url.pathname !== "/api/oauth/native/callback") return undefined;
+    const attemptId = url.searchParams.get("attempt");
+    if (!attemptId || !/^[a-f0-9-]{36}$/i.test(attemptId)) return undefined;
+    return { attemptId, redirectUri };
+  } catch {
+    return undefined;
+  }
+}
+
+function getNativeLoginUrl(redirectUri: string) {
+  if (!ENV.oAuthPortalUrl || !ENV.appId) throw new Error("Native OAuth configuration is unavailable");
+  const url = new URL(`${ENV.oAuthPortalUrl.replace(/\/$/, "")}/app-auth`);
+  url.searchParams.set("appId", ENV.appId);
+  url.searchParams.set("redirectUri", redirectUri);
+  url.searchParams.set("state", encodeOAuthState(redirectUri));
+  url.searchParams.set("type", "signIn");
+  return url.toString();
 }
 
 async function syncUser(userInfo: {
@@ -100,6 +133,75 @@ function buildUserResponse(
 }
 
 export function registerOAuthRoutes(app: Express) {
+  app.post("/api/oauth/native/attempt", async (req: Request, res: Response) => {
+    try {
+      const id = randomUUID();
+      const proof = randomBytes(32).toString("base64url");
+      const deviceId = typeof req.body?.deviceId === "string" ? req.body.deviceId.slice(0, 128) : undefined;
+      const platform = typeof req.body?.platform === "string" ? req.body.platform.slice(0, 32) : "native";
+      const redirectUri = getNativeCallbackUrl(req, id);
+      const callbackState = encodeOAuthState(redirectUri);
+      await createExpoGoOAuthAttempt({ id, proofHash: hashProof(proof), callbackState, expiresAt: new Date(Date.now() + EXPO_GO_ATTEMPT_TTL_MS), deviceId, platform });
+      res.status(201).json({ attemptId: id, proof, loginUrl: getNativeLoginUrl(redirectUri) });
+    } catch (error) {
+      console.error("[OAuth] Failed to create native attempt", error);
+      res.status(500).json({ error: "Unable to start mobile sign-in" });
+    }
+  });
+
+  app.get("/api/oauth/native/callback", async (req: Request, res: Response) => {
+    const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
+    if (!code || !state) {
+      res.status(400).type("html").send("<main><h1>تعذر إكمال تسجيل الدخول</h1><p>أعد المحاولة من تطبيق أبو مشعل.</p></main>");
+      return;
+    }
+    const callback = decodeNativeCallbackState(state);
+    if (!callback) {
+      res.status(400).type("html").send("<main><h1>رابط عودة غير صالح</h1></main>");
+      return;
+    }
+    try {
+      const stored = await markExpoGoOAuthAttemptReady({ id: callback.attemptId, callbackState: state, authorizationCode: code });
+      if (!stored) {
+        res.status(410).type("html").send("<main><h1>انتهت جلسة تسجيل الدخول</h1><p>ارجع إلى التطبيق وابدأ المحاولة مرة أخرى.</p></main>");
+        return;
+      }
+      res.redirect(302, `abumishaal://oauth/callback?attempt=${encodeURIComponent(callback.attemptId)}`);
+    } catch (error) {
+      console.error("[OAuth] Native callback failed", error);
+      res.status(500).type("html").send("<main><h1>تعذر حفظ نتيجة تسجيل الدخول</h1><p>ارجع إلى التطبيق وأعد المحاولة.</p></main>");
+    }
+  });
+
+  app.get("/api/oauth/native/complete", async (req: Request, res: Response) => {
+    const attemptId = getQueryParam(req, "attemptId");
+    const proof = getQueryParam(req, "proof");
+    if (!attemptId || !proof) {
+      res.status(400).json({ error: "attemptId and proof are required" });
+      return;
+    }
+    try {
+      const attempt = await claimExpoGoOAuthAttempt({ id: attemptId, proofHash: hashProof(proof) });
+      if (!attempt) {
+        res.status(202).json({ status: "pending" });
+        return;
+      }
+      const tokenResponse = await sdk.exchangeCodeForToken(attempt.authorizationCode!, attempt.callbackState);
+      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
+      const user = await syncUser(userInfo);
+      const sessionToken = await sdk.createSessionToken(userInfo.openId!, { name: userInfo.name || "", expiresInMs: ONE_YEAR_MS });
+      const userId = (user as { id?: number }).id;
+      if (typeof userId === "number") await recordLoginSecurityEvent({ userId, deviceId: attempt.deviceId, platform: attempt.platform, req });
+      await removeExpoGoOAuthAttempt(attemptId);
+      res.json({ status: "completed", app_session_id: sessionToken, user: buildUserResponse(user) });
+    } catch (error) {
+      if (attemptId) await failExpoGoOAuthAttempt(attemptId).catch(() => undefined);
+      console.error("[OAuth] Native completion failed", error);
+      res.status(500).json({ error: "Unable to complete mobile sign-in" });
+    }
+  });
+
   app.post("/api/oauth/expo-go/attempt", async (req: Request, res: Response) => {
     try {
       const id = randomUUID();
