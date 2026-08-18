@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>أبو مشعل على Google Play</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .slide-container { width: 1280px; min-height: 720px; background: #F8FAFC; color: #1E293B; display: grid; grid-template-columns: 58% 42%; direction: rtl; font-family: Tahoma, Arial, sans-serif; }
+    .top-rule { grid-column: 1 / -1; min-height: 8px; background: #2563EB; }
+    .content { min-height: 712px; display: flex; flex-direction: column; justify-content: center; padding-top: 84px; padding-right: 78px; padding-left: 36px; }
+    .eyebrow { color: #2563EB; font-size: 18px; font-weight: 700; letter-spacing: 1px; margin-bottom: 22px; }
+    h1 { font-family: "Courier New", Tahoma, monospace; font-size: 57px; line-height: 1.22; font-weight: 700; max-width: 620px; }
+    .subtitle { margin-top: 24px; color: #475569; font-size: 25px; line-height: 1.65; max-width: 560px; }
+    .tag { margin-top: 40px; border-right: 4px solid #2563EB; padding: 10px 16px; color: #475569; font-size: 17px; max-width: 405px; background: #EFF6FF; }
+    .visual { min-height: 712px; display: flex; align-items: center; justify-content: center; padding-top: 84px; padding-right: 46px; padding-left: 78px; }
+    .flow { width: 100%; display: grid; gap: 18px; }
+    .node { min-height: 116px; border: 1px solid #CBD5E1; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; }
+    .node.primary { background: #1E293B; color: #F8FAFC; border-color: #1E293B; }
+    .node .symbol { color: #2563EB; font-family: "Courier New", monospace; font-size: 32px; font-weight: 700; }
+    .node.primary .symbol { color: #93C5FD; }
+    .node strong { font-size: 23px; }
+    .node span { color: #64748B; font-size: 15px; }
+    .node.primary span { color: #CBD5E1; }
+    .connector { min-height: 32px; border-right: 2px solid #2563EB; margin-right: 54px; }
+  </style>
+</head>
+<body>
+  <div class="slide-container">
+    <div class="top-rule"></div>
+    <section class="content">
+      <div class="eyebrow">ABU MISHAAL / RELEASE GATE</div>
+      <h1>أبو مشعل على Google Play</h1>
+      <p class="subtitle">خطوات النشر النهائي ونقاط الفحص قبل الإطلاق.</p>
+      <div class="tag">دليل تنفيذي لمالك الحساب وفريق الاختبار</div>
+    </section>
+    <aside class="visual" aria-label="تسلسل الإصدار">
+      <div class="flow">
+        <div class="node"><div><strong>حزمة موقّعة</strong><br><span>APK أو AAB</span></div><div class="symbol">01</div></div>
+        <div class="connector"></div>
+        <div class="node"><div><strong>اختبار داخلي</strong><br><span>أجهزة وحسابات فعلية</span></div><div class="symbol">02</div></div>
+        <div class="connector"></div>
+        <div class="node primary"><div><strong>قرار الإنتاج</strong><br><span>Google Play</span></div><div class="symbol">03</div></div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

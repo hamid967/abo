@@ -1,0 +1,133 @@
+{
+  "project_info": {
+    "title": "أبو مشعل على Google Play",
+    "created": 1787033230.555,
+    "last_updated": 1787034146.313,
+    "total_slides": 11
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "build_route",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "six_gates",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "store_listing",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "data_safety",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "permissions",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "privacy_deletion",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "internal_testing",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "release_decision",
+      "state": "edited",
+      "pageNum": 9
+    },
+    {
+      "id": "owner_actions",
+      "state": "edited",
+      "pageNum": 10
+    },
+    {
+      "id": "closing",
+      "state": "edited",
+      "pageNum": 11
+    }
+  ],
+  "outline": [
+    {
+      "id": "cover",
+      "title": "أبو مشعل على Google Play",
+      "summary": "عرض عملي لخطوات النشر النهائي وفحوصات الجاهزية قبل الإطلاق.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "build_route",
+      "title": "مسار إصدار مستقل",
+      "summary": "توضيح الاعتماد على GitHub Actions والحزم الموقعة بدلاً من Expo Build السحابي.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "six_gates",
+      "title": "ست بوابات قبل الإنتاج",
+      "summary": "عرض بوابات الحزمة والمتجر والخصوصية والجودة والمحتوى والقرار.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "store_listing",
+      "title": "صفحة متجر صادقة",
+      "summary": "تلخيص متطلبات الاسم والوصف والأيقونة والرسم المميز واللقطات الفعلية.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "data_safety",
+      "title": "Data safety يبدأ من السلوك",
+      "summary": "عرض كيفية ربط إفصاح البيانات بالسلوك الفعلي وSDKs وسياسة الخصوصية.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "permissions",
+      "title": "الصلاحيات تحتاج موافقة",
+      "summary": "تغطية الكاميرا والميكروفون والتقويم والإشعارات والإفصاح الإيجابي.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "privacy_deletion",
+      "title": "الخصوصية وحذف الحساب",
+      "summary": "عرض متطلبات سياسة الخصوصية وطرق حذف الحساب داخل التطبيق وخارجه.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "internal_testing",
+      "title": "ابدأ بالاختبار الداخلي",
+      "summary": "تقديم رحلة رفع AAB واختيار المختبرين وتنفيذ قبول على أجهزة فعلية.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "release_decision",
+      "title": "قائمة قرار الإصدار",
+      "summary": "تصنيف العناصر الجاهزة والعناصر التي تحتاج قراراً أو جهازاً فعلياً.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "owner_actions",
+      "title": "خطوات مالك الحساب",
+      "summary": "تحديد خطوات التنفيذ التالية داخل Play Console وصولاً إلى Policy status.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "closing",
+      "title": "إطلاق منضبط",
+      "summary": "رسالة ختامية تؤكد الإفصاح الدقيق والاختبار قبل الإنتاج.",
+      "image_plan": "Use a suitable image if needed"
+    }
+  ]
+}
