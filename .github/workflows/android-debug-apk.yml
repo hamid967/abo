@@ -1,23 +1,31 @@
-name: Build Android APK
+name: Build Android Package
 
 on:
   workflow_dispatch:
     inputs:
       build_variant:
-        description: "APK variant to build"
+        description: "Android variant to build"
         required: true
         default: "release"
         type: choice
         options:
           - release
           - debug
+      package_format:
+        description: "Android package format"
+        required: true
+        default: "aab"
+        type: choice
+        options:
+          - aab
+          - apk
 
 permissions:
   contents: read
 
 jobs:
-  build-android-apk:
-    name: Build installable Android APK
+  build-android-package:
+    name: Build signed Android package
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -73,27 +81,38 @@ jobs:
         if: ${{ inputs.build_variant == 'release' }}
         run: node scripts/configure-android-release-signing.cjs
 
-      - name: Assemble installable APK
-        id: assemble_apk
+      - name: Assemble Android package
+        id: assemble_package
         working-directory: android
         shell: bash
         run: |
+          if [ "${{ inputs.package_format }}" = "aab" ] && [ "${{ inputs.build_variant }}" != "release" ]; then
+            echo "AAB distribution packages must use the release variant."
+            exit 1
+          fi
+          signing_args=(
+            -PABU_MISHAL_KEYSTORE_FILE=abu-mishal-release.jks
+            -PABU_MISHAL_KEYSTORE_PASSWORD="$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+            -PABU_MISHAL_KEY_ALIAS="$ANDROID_RELEASE_KEY_ALIAS"
+            -PABU_MISHAL_KEY_PASSWORD="$ANDROID_RELEASE_KEY_PASSWORD"
+          )
+          if [ "${{ inputs.package_format }}" = "aab" ]; then
+            ./gradlew app:bundleRelease "${signing_args[@]}"
+            echo "package_path=android/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "${{ inputs.build_variant }}" = "release" ]; then
-            ./gradlew app:assembleRelease \
-              -PABU_MISHAL_KEYSTORE_FILE=abu-mishal-release.jks \
-              -PABU_MISHAL_KEYSTORE_PASSWORD="$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
-              -PABU_MISHAL_KEY_ALIAS="$ANDROID_RELEASE_KEY_ALIAS" \
-              -PABU_MISHAL_KEY_PASSWORD="$ANDROID_RELEASE_KEY_PASSWORD"
+            ./gradlew app:assembleRelease "${signing_args[@]}"
             echo "apk_path=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
           else
             ./gradlew app:assembleDebug
             echo "apk_path=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload APK artifact
+      - name: Upload Android package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: abu-mishal-android-${{ inputs.build_variant }}-apk
-          path: ${{ steps.assemble_apk.outputs.apk_path }}
+          name: abu-mishal-android-${{ inputs.build_variant }}-${{ inputs.package_format }}
+          path: ${{ steps.assemble_package.outputs.package_path }}
           if-no-files-found: error
           retention-days: 14
