@@ -358,7 +358,6 @@ export async function getMobileTransactionDetail(id: number) {
     .orderBy(desc(transactionStatusHistory.createdAt));
   return { transaction, history };
 }
-
 export async function getTransactionById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
