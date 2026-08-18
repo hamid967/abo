@@ -79,11 +79,11 @@ android {
 
     namespace "com.abumishaalnative"
     defaultConfig {
-        applicationId "com.abumishaalnative"
+        applicationId "com.app.governmenttransactionstracker"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode (findProperty("ABU_MISHAL_VERSION_CODE") ?: "2").toInteger()
+        versionName (findProperty("ABU_MISHAL_VERSION_NAME") ?: "1.1.0")
     }
     signingConfigs {
         debug {

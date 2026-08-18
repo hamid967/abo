@@ -1,0 +1,110 @@
+name: Build Independent Android Package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "native-independent/**"
+      - ".github/workflows/android-native-independent.yml"
+      - "scripts/configure-android-release-signing.cjs"
+  workflow_dispatch:
+    inputs:
+      package_format:
+        description: "Android package format"
+        required: true
+        default: "aab"
+        type: choice
+        options: [aab, apk]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-independent-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build signed independent Android package
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: native-independent
+    env:
+      ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+      ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+      ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+      ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+      PACKAGE_FORMAT: ${{ inputs.package_format || 'aab' }}
+      VERSION_CODE: ${{ 100000 + github.run_number }}
+      VERSION_NAME: 1.1.${{ github.run_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: native-independent/pnpm-lock.yaml
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate independent TypeScript
+        run: pnpm exec tsc --noEmit
+
+      - name: Restore release keystore
+        shell: bash
+        run: |
+          test -n "$ANDROID_RELEASE_KEYSTORE_BASE64"
+          test -n "$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_RELEASE_KEY_ALIAS"
+          test -n "$ANDROID_RELEASE_KEY_PASSWORD"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > android/app/abu-mishal-release.jks
+
+      - name: Configure release signing
+        run: node ../scripts/configure-android-release-signing.cjs android/app/build.gradle
+
+      - name: Build signed Android package
+        id: build_package
+        shell: bash
+        working-directory: native-independent/android
+        run: |
+          signing_args=(
+            -PABU_MISHAL_KEYSTORE_FILE=abu-mishal-release.jks
+            -PABU_MISHAL_KEYSTORE_PASSWORD="$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+            -PABU_MISHAL_KEY_ALIAS="$ANDROID_RELEASE_KEY_ALIAS"
+            -PABU_MISHAL_KEY_PASSWORD="$ANDROID_RELEASE_KEY_PASSWORD"
+            -PABU_MISHAL_VERSION_CODE="$VERSION_CODE"
+            -PABU_MISHAL_VERSION_NAME="$VERSION_NAME"
+          )
+          if [ "$PACKAGE_FORMAT" = "apk" ]; then
+            ./gradlew app:assembleRelease "${signing_args[@]}"
+            echo "artifact_path=native-independent/android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+          else
+            ./gradlew app:bundleRelease "${signing_args[@]}"
+            echo "artifact_path=native-independent/android/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload signed package
+        uses: actions/upload-artifact@v4
+        with:
+          name: abu-mishal-native-${{ env.PACKAGE_FORMAT }}-${{ github.run_number }}
+          path: ${{ steps.build_package.outputs.artifact_path }}
+          if-no-files-found: error
+          retention-days: 30
