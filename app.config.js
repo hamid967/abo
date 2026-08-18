@@ -67,6 +67,7 @@ const config = {
     ["expo-calendar", { calendarPermission: "يسمح $(PRODUCT_NAME) بإضافة مواعيد المهام إلى تقويمك عند اختيارك ذلك.", remindersPermission: "يسمح $(PRODUCT_NAME) بإضافة تذكيرات المهام إلى جهازك عند اختيارك ذلك." }],
     ["expo-local-authentication", { faceIDPermission: "يسمح $(PRODUCT_NAME) باستخدام Face ID لتسهيل الدخول الآمن إلى حسابك." }],
     ["expo-audio", { microphonePermission: "يسمح $(PRODUCT_NAME) بالوصول إلى الميكروفون عند استخدام ميزات الصوت." }],
+    ["expo-camera", { cameraPermission: "يسمح $(PRODUCT_NAME) بتصوير المستندات التي تختار رفعها إلى محفظتك." }],
     ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: true }],
     ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFFDF7", dark: { backgroundColor: "#102C24" } }],
     ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a"], minSdkVersion: 24 } }],

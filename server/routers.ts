@@ -20,6 +20,7 @@ import { summarizeDocumentText } from "./document-summary";
 import { getGovernanceGapDashboard } from "./governance-gap-summary";
 import { transcribeVoiceIntake } from "./voice-intake";
 import { voiceIntakeMimeTypes } from "./voice-intake-policy";
+import { extractDocumentFields } from "./document-field-extraction";
 
 const beneficiaryTypeSchema = z.enum(["individual", "establishment", "company", "association", "nonprofit", "representative"]);
 const prioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -445,6 +446,32 @@ export const appRouter = router({
       } catch (error) {
         const message = error instanceof Error ? error.message : "DOCUMENT_DELETE_FAILED";
         if (["DOCUMENT_NOT_FOUND", "DOCUMENT_LINKED_TO_RECORD"].includes(message)) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+    extractFields: protectedProcedure.input(z.object({ documentId: z.number().int().positive(), language: z.enum(["ar", "en"]).default("ar"), consentToProcess: z.literal(true) })).mutation(async ({ ctx, input }) => {
+      const allowance = checkAssistantRateLimit({ userId: ctx.user.id, action: "document_summary" });
+      if (!allowance.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "DOCUMENT_ANALYSIS_RATE_LIMITED" });
+      const document = await db.getOwnedDocumentForAccess(ctx.user.id, input.documentId);
+      if (!document) throw new TRPCError({ code: "NOT_FOUND" });
+      const fileName = document.fileName.toLowerCase();
+      if (!fileName.endsWith(".jpg") && !fileName.endsWith(".jpeg") && !fileName.endsWith(".png")) throw new TRPCError({ code: "BAD_REQUEST", message: "DOCUMENT_IMAGE_REQUIRED" });
+      try {
+        const extraction = await extractDocumentFields({ imageUrl: await storageGetSignedUrl(document.storageKey), language: input.language });
+        const preview = await db.createDocumentFieldExtraction({ ownerUserId: ctx.user.id, documentId: document.id, documentType: extraction.documentType, extractedFields: extraction });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "document.fields_extracted", resourceType: "document", resourceId: document.id, metadata: { previewId: preview.id, fieldCount: extraction.fields.length, language: input.language } });
+        return { extractionId: preview.id, ...extraction };
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DOCUMENT_EXTRACTION_UNAVAILABLE" });
+      }
+    }),
+    confirmExtractedFields: protectedProcedure.input(z.object({ extractionId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      try {
+        const result = await db.confirmDocumentFieldExtraction({ ownerUserId: ctx.user.id, extractionId: input.extractionId });
+        await db.createAuditLog({ actorUserId: ctx.user.id, action: "document.fields_confirmed", resourceType: "document", resourceId: result.documentId, metadata: { extractionId: input.extractionId, documentType: result.documentType } });
+        return result;
+      } catch (error) {
+        if (error instanceof Error && error.message === "DOCUMENT_EXTRACTION_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND" });
         throw error;
       }
     }),

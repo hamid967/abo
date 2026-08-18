@@ -20,6 +20,7 @@ import { TodayActionsProvider } from "@/lib/today-actions-provider";
 import { AccountProvider, useAccount } from "@/hooks/use-account";
 import { BiometricUnlockScreen } from "@/components/biometric-unlock-screen";
 import { MobileNotificationObserver } from "@/components/mobile-notification-observer";
+import { NetworkStatusBanner } from "@/components/network-status-banner";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -128,6 +129,7 @@ export default function RootLayout() {
                   <InquiryProvider>
                     <TodayActionsProvider>
                       <MobileNotificationObserver />
+                      <NetworkStatusBanner />
               <Stack initialRouteName="welcome" screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="welcome" />

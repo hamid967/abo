@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { adminSettings, aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobileAppReleases, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
+import { adminSettings, aiConversations, aiMessages, approvalRequests, approvalSteps, appointments, automationEvents, automationRules, automationRuns, automationSchedules, auditLogs, cloudRecords, documentFieldExtractions, documents, dueNotificationRuns, expoGoOAuthAttempts, faqItems, governmentServices, handoffRequests, InsertUser, InsertServiceRequest, InsertTransactionRecord, knowledgeArticles, loginSecurityDevices, mobileAppReleases, mobilePushDevices, notificationDeliveryLogs, notificationPreferences, notifications, officialSources, organizationMembers, organizations, playbookSteps, playbookVersions, regulatoryUpdates, requestDraftDocuments, requestDrafts, requestPlaybookAssignments, servicePlaybooks, serviceRequests, supportTickets, taskChecklistItems, taskDependencies, tasks, ticketMessages, transactionStatusHistory, transactions, updateImpacts, updateSubscriptions, userConsents, users } from "../drizzle/schema";
 import { canManageOperations, canOperateTransactions } from "./authorization";
 import { ENV } from "./_core/env";
 import { assertConversationTransition, assertSafeConversationContent, conversationStatusForState, type ConversationState } from "./conversation-state";
@@ -781,6 +781,27 @@ export async function getOwnedDocumentForAccess(ownerUserId: number, documentId:
   if (!db) return undefined;
   const rows = await db.select({ id: documents.id, storageKey: documents.storageKey, requestId: documents.requestId, transactionId: documents.transactionId, fileName: documents.fileName }).from(documents).where(and(eq(documents.id, documentId), eq(documents.ownerUserId, ownerUserId), isNull(documents.deletedAt))).limit(1);
   return rows[0];
+}
+
+export async function createDocumentFieldExtraction(input: { ownerUserId: number; documentId: number; documentType: string | null; extractedFields: unknown }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const id = randomUUID();
+  await db.insert(documentFieldExtractions).values({ id, ownerUserId: input.ownerUserId, documentId: input.documentId, documentType: input.documentType ?? undefined, extractedFields: input.extractedFields });
+  return { id };
+}
+
+export async function confirmDocumentFieldExtraction(input: { ownerUserId: number; extractionId: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(documentFieldExtractions).where(and(eq(documentFieldExtractions.id, input.extractionId), eq(documentFieldExtractions.ownerUserId, input.ownerUserId), eq(documentFieldExtractions.status, "preview"))).limit(1);
+  const extraction = rows[0];
+  if (!extraction) throw new Error("DOCUMENT_EXTRACTION_NOT_FOUND");
+  await db.transaction(async (tx) => {
+    await tx.update(documentFieldExtractions).set({ status: "confirmed", confirmedAt: new Date() }).where(eq(documentFieldExtractions.id, input.extractionId));
+    if (extraction.documentType) await tx.update(documents).set({ documentType: extraction.documentType }).where(and(eq(documents.id, extraction.documentId), eq(documents.ownerUserId, input.ownerUserId), isNull(documents.deletedAt)));
+  });
+  return { documentId: extraction.documentId, documentType: extraction.documentType };
 }
 
 export async function softDeleteOwnedDocument(ownerUserId: number, documentId: number) {

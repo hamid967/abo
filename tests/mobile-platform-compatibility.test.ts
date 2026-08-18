@@ -13,6 +13,7 @@ describe("mobile platform compatibility", () => {
   const taskTracking = readFileSync("app/task-tracking/index.tsx", "utf8");
   const notificationService = readFileSync("lib/notification-service.ts", "utf8");
   const mobilePush = readFileSync("lib/mobile-push.ts", "utf8");
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };
 
   it("keeps native configuration compatible with iPad, Android documents, and Face ID", () => {
     expect(config).toContain("supportsTablet: true");
@@ -29,6 +30,7 @@ describe("mobile platform compatibility", () => {
     expect(config).toContain("googleServicesFile: fcmConfigPath");
     expect(config).toContain("enableBackgroundRemoteNotifications: true");
     expect(config).toContain('icon: "./assets/images/android-icon-monochrome.png"');
+    expect(packageJson.dependencies["expo-network"]).toBeDefined();
   });
 
   it("registers the cross-platform routes and lets long settings content scroll", () => {

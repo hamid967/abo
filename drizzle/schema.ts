@@ -444,6 +444,17 @@ export const documents = mysqlTable("documents", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("documents_owner_idx").on(table.ownerUserId), index("documents_transaction_idx").on(table.transactionId), foreignKey({ columns: [table.requestId], foreignColumns: [serviceRequests.id], name: "documents_request_fk" }).onDelete("set null"), foreignKey({ columns: [table.transactionId], foreignColumns: [transactions.id], name: "documents_transaction_fk" }).onDelete("set null"), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "documents_owner_fk" }).onDelete("restrict")]);
 
+export const documentFieldExtractions = mysqlTable("document_field_extractions", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  documentId: int("documentId").notNull(),
+  ownerUserId: int("ownerUserId").notNull(),
+  status: mysqlEnum("status", ["preview", "confirmed"]).default("preview").notNull(),
+  documentType: varchar("documentType", { length: 120 }),
+  extractedFields: json("extractedFields").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+}, (table) => [index("document_field_extractions_document_idx").on(table.documentId), index("document_field_extractions_owner_idx").on(table.ownerUserId, table.createdAt), foreignKey({ columns: [table.documentId], foreignColumns: [documents.id], name: "document_field_extractions_document_fk" }).onDelete("cascade"), foreignKey({ columns: [table.ownerUserId], foreignColumns: [users.id], name: "document_field_extractions_owner_fk" }).onDelete("cascade")]);
+
 export const notifications = mysqlTable("notifications", {
   id: int("id").autoincrement().primaryKey(),
   recipientUserId: int("recipientUserId").notNull(),
