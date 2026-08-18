@@ -12,8 +12,8 @@ if (source.includes(marker)) {
   process.exit(0);
 }
 
-const signingConfigsTail = "\n    }\n\n    buildTypes {";
-if (!source.includes(signingConfigsTail)) {
+const signingBlock = /signingConfigs\s*\{/;
+if (!signingBlock.test(source)) {
   throw new Error("Unable to find the Android signingConfigs block.");
 }
 
@@ -28,18 +28,15 @@ const releaseConfig = `
             }
         }`;
 
-let updated = source.replace(
-  signingConfigsTail,
-  `${releaseConfig}${signingConfigsTail}`,
-);
+let updated = source.replace(signingBlock, (match) => `${match}${releaseConfig}`);
 
-updated = updated.replace(
-  /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/,
-  "$1signingConfig signingConfigs.release",
-);
-
-if (updated === source) {
-  throw new Error("Unable to configure Android release signing.");
+if (/buildTypes\s*\{/.test(updated)) {
+  updated = updated.replace(
+    /buildTypes\s*\{/,
+    "buildTypes {\n        release.signingConfig signingConfigs.release",
+  );
+} else {
+  updated += "\nandroid.buildTypes.release.signingConfig = android.signingConfigs.release\n";
 }
 
 fs.writeFileSync(gradlePath, updated);
