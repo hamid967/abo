@@ -80,6 +80,7 @@ export const appRouter = router({
   }),
   transactions: router({
     list: protectedProcedure.query(({ ctx }) => db.listTransactions(ctx.user.id, ctx.user.role)),
+    mobileList: protectedProcedure.query(({ ctx }) => db.listMobileTransactions(ctx.user.id, ctx.user.role)),
     createForRequest: protectedProcedure.input(z.object({
       requestId: z.number().int().positive(),
       customerUserId: z.number().int().positive(),

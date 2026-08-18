@@ -302,6 +302,27 @@ export async function listTransactions(userId: number, role: string) {
   return canOperateTransactions(role) ? query : query.where(eq(transactions.customerUserId, userId));
 }
 
+export async function listMobileTransactions(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select({
+    id: transactions.id,
+    status: transactions.status,
+    priority: transactions.priority,
+    referenceNumber: transactions.referenceNumber,
+    dueAt: transactions.dueAt,
+    nextAction: transactions.nextAction,
+    updatedAt: transactions.updatedAt,
+    title: serviceRequests.title,
+    city: serviceRequests.city,
+    serviceName: governmentServices.name,
+  }).from(transactions)
+    .innerJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id))
+    .leftJoin(governmentServices, eq(transactions.serviceId, governmentServices.id))
+    .orderBy(desc(transactions.updatedAt));
+  return canOperateTransactions(role) ? query : query.where(eq(transactions.customerUserId, userId));
+}
+
 export async function getTransactionById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
