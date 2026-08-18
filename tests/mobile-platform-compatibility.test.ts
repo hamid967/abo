@@ -33,6 +33,10 @@ describe("mobile platform compatibility", () => {
     expect(packageJson.dependencies["expo-network"]).toBeDefined();
   });
 
+  it("defines an incrementable Android version code for Play App Bundle releases", () => {
+    expect(config).toContain("versionCode: 1");
+  });
+
   it("registers the cross-platform routes and lets long settings content scroll", () => {
     expect(rootLayout).toContain('name="chat/abu-mishal"');
     expect(rootLayout).toContain('name="admin/chats"');

@@ -43,6 +43,7 @@ const config = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
+    versionCode: 1,
     ...(hasFcmConfig ? { googleServicesFile: fcmConfigPath } : {}),
     permissions: ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "READ_CALENDAR", "WRITE_CALENDAR"],
     intentFilters: [{
