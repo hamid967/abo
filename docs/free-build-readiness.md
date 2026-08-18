@@ -1,12 +1,10 @@
 # جاهزية البناء المجاني لأبو مشعل
 
-**الحالة:** جاهز لبناء Android الموقّع عبر GitHub Actions دون Expo Build السحابي.
+**الحالة:** جاهز لبناء Android الموقّع عبر GitHub Actions.
 
 ## النتيجة
 
-لا يحتوي المشروع على `eas.json` أو إعداد مشروع EAS أو `EXPO_TOKEN`. يستعمل ملف التكوين `app.config.js` وحدات Expo مفتوحة المصدر وExpo CLI لتوليد مشروع Android محلياً داخل عامل GitHub فقط؛ لا يستدعي هذا الأمر خدمة Expo Build أو حصة بناء مدفوعة.
-
-> ظهور رسالة `Expo build quota exceeded` في لوحة النشر يخص زر **Build APK** في تلك اللوحة فقط. لا يمنع تشغيل التطبيق عبر Expo Go، ولا يمنع بناء APK أو AAB الموقعين عبر GitHub Actions.
+لا يحتوي المشروع على ملفات ضبط لخدمة بناء سحابية أو رموز وصول خاصة بها. يستعمل ملف التكوين `app.config.js` وحدات Expo مفتوحة المصدر وExpo CLI لتوليد مشروع Android محلياً داخل عامل GitHub فقط، ثم يتولى Gradle بناء الحزمة وتوقيعها.
 
 | المجال | التحقق | الحالة |
 |---|---|---|
@@ -22,7 +20,7 @@
 1. افتح [Actions في مستودع أبو مشعل](https://github.com/hamid967/abo/actions).
 2. اختر **Build Android Package** ثم **Run workflow**.
 3. لاختبار Android اختر `release` و`apk`، ولـGoogle Play اختر `release` و`aab`.
-4. نزّل Artifact الناتج من نفس التشغيل. لا تستخدم زر **Build APK** في لوحة Expo.
+4. نزّل Artifact الناتج من نفس التشغيل.
 
 ## أسرار GitHub المطلوبة للإصدار فقط
 
@@ -30,4 +28,4 @@
 
 ## حدود النشر
 
-يتم نشر الخلفية من لوحة المشروع في إجراء مستقل عن الحزم. عند ظهور `Backend Service — Unpublished changes`، ينفذ مالك الحساب نشر الخلفية من بطاقتها. لا يتطلب ذلك Expo Build ولا يغير توقيع Android.
+يتم نشر الخلفية من لوحة المشروع في إجراء مستقل عن الحزم. عند ظهور `Backend Service — Unpublished changes`، ينفذ مالك الحساب نشر الخلفية من بطاقتها. لا يغير ذلك توقيع Android.

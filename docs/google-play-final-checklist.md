@@ -21,7 +21,7 @@
 ## الإصدار
 
 1. أنشئ التطبيق في Play Console بالاسم وحزمة Android: `com.app.governmenttransactionstracker`.
-2. نزّل `abu-mishal-android-release-aab` من تشغيل GitHub Actions الناجح، ولا تستخدم Expo Build.
+2. نزّل `abu-mishal-android-release-aab` من تشغيل GitHub Actions الناجح.
 3. ارفعه أولاً إلى **Internal testing** وأضف مختبرين، ثم نفذ رحلة الدخول والمعاملة والمستند والإشعار على جهاز فعلي.
 4. أكمل App content وData safety وContent rating وTarget audience وAds declaration قبل التوسع إلى Closed أو Production.
 5. راجع Policy status، ثم ابدأ مسار النشر في Play Console بعد قبول الاختبار.

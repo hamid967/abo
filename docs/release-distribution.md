@@ -5,7 +5,7 @@
 **مصدر البناء:** GitHub Actions — التشغيل [32094007348](https://github.com/hamid967/abo/actions/runs/32094007348).  
 **Artifact:** `abu-mishal-android-release-apk` (المعرّف: `9309614084`).
 
-> **لا تعتمد على زر Build APK في Expo:** ظهرت رسالة تجاوز حصة Expo Build في لوحة النشر، لكنها لا تمنع التوزيع عبر GitHub Actions. استخدم Artifact الموقّع من GitHub للاختبار الداخلي، واستخدم AAB الموقّع للرفع إلى Google Play.
+> استخدم Artifact الموقّع من GitHub للاختبار الداخلي، واستخدم AAB الموقّع للرفع إلى Google Play.
 
 > هذا الإصدار مخصّص للاختبار والتوزيع الداخلي. لا يمثل أبو مشعل أي جهة حكومية، ولا ينبغي اعتباره إصدار متجر جاهزاً قبل تنفيذ اختبارات القبول وربط خدمات الإشعار الخارجية.
 
@@ -42,13 +42,12 @@
 
 يتطلب الإصدار العام إنشاء **Android App Bundle (AAB)** موقّع، ورفع رقم الإصدار، وإكمال سياسة الخصوصية ومحتوى المتجر. كما يجب أولاً ربط FCM وAPNs في حسابات الموردين واختبار الإشعارات على أجهزة فعلية، ثم إجراء اختبار قبول ثنائي الحساب على Android وiPhone/iPad. يستمر توزيع APK الموقّع كقناة اختبار داخلية فقط إلى أن تكتمل هذه الضوابط.
 
-**AAB المتاح حالياً:** التشغيل [32101694976](https://github.com/hamid967/abo/actions/runs/32101694976)، وArtifact اسمه `abu-mishal-android-release-aab`. نزّله من GitHub ثم ارفعه إلى مسار **Internal testing** في Google Play Console؛ لا تحتاج إلى Expo Build لهذه الخطوة.
+**AAB المتاح حالياً:** التشغيل [32101694976](https://github.com/hamid967/abo/actions/runs/32101694976)، وArtifact اسمه `abu-mishal-android-release-aab`. نزّله من GitHub ثم ارفعه إلى مسار **Internal testing** في Google Play Console.
 
 ## إقفال مؤشرات النشر في لوحة المشروع
 
 | المؤشر الظاهر | معناه | الإجراء المطلوب من مالك الحساب |
 |---|---|---|
-| `Expo build quota exceeded` | حصة بناء Expo السحابية غير متاحة | تجاهل زر **Build APK** واستعمل GitHub Actions للحزم الموقعة. لا يلزم رفع خطة Expo. |
 | `You have unpackaged changes` | توجد تغييرات محلية لم تُحفظ ضمن نسخة مشروع | احفظ نقطة استعادة حديثة، ثم أعد فتح لوحة النشر. |
 | `Backend Service — Unpublished changes` | تغييرات الخلفية لم تُنشر بعد | افتح قسم **Backend Service** في لوحة النشر واضغط زر النشر الظاهر هناك؛ هذا ينشر الخلفية فقط ولا يبني APK. |
 

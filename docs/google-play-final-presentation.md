@@ -8,11 +8,11 @@
 
 ## Slide 1
 
-### مسار إصدار مستقل عن Expo Build
+### مسار إصدار معتمد عبر GitHub Actions
 
 - حزم APK وAAB الموقّعة تُبنى عبر GitHub Actions.
-- يستخدم البناء Expo CLI محلياً داخل عامل GitHub، وليس خدمة Expo Build السحابية.
-- يظل زر Build APK في لوحة Expo غير مطلوب لمسار التوزيع المعتمد.
+- يستخدم البناء Expo CLI محلياً داخل عامل GitHub ثم Gradle لتجهيز الحزمة الموقعة.
+- يدير GitHub Actions مسار التوزيع المعتمد من التوليد حتى Artifact.
 
 ## Slide 2
 
