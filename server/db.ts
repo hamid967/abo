@@ -302,6 +302,63 @@ export async function listTransactions(userId: number, role: string) {
   return canOperateTransactions(role) ? query : query.where(eq(transactions.customerUserId, userId));
 }
 
+export async function listMobileTransactions(userId: number, role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const query = db.select({
+    id: transactions.id,
+    customerUserId: transactions.customerUserId,
+    status: transactions.status,
+    priority: transactions.priority,
+    referenceNumber: transactions.referenceNumber,
+    dueAt: transactions.dueAt,
+    nextAction: transactions.nextAction,
+    updatedAt: transactions.updatedAt,
+    title: serviceRequests.title,
+    city: serviceRequests.city,
+    serviceName: governmentServices.name,
+  }).from(transactions)
+    .innerJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id))
+    .leftJoin(governmentServices, eq(transactions.serviceId, governmentServices.id))
+    .orderBy(desc(transactions.updatedAt));
+  return canOperateTransactions(role) ? query : query.where(eq(transactions.customerUserId, userId));
+}
+
+export async function getMobileTransactionDetail(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({
+    id: transactions.id,
+    customerUserId: transactions.customerUserId,
+    status: transactions.status,
+    priority: transactions.priority,
+    referenceNumber: transactions.referenceNumber,
+    dueAt: transactions.dueAt,
+    nextAction: transactions.nextAction,
+    createdAt: transactions.createdAt,
+    updatedAt: transactions.updatedAt,
+    title: serviceRequests.title,
+    description: serviceRequests.description,
+    city: serviceRequests.city,
+    serviceName: governmentServices.name,
+  }).from(transactions)
+    .innerJoin(serviceRequests, eq(transactions.requestId, serviceRequests.id))
+    .leftJoin(governmentServices, eq(transactions.serviceId, governmentServices.id))
+    .where(eq(transactions.id, id))
+    .limit(1);
+  const transaction = rows[0];
+  if (!transaction) return undefined;
+  const history = await db.select({
+    id: transactionStatusHistory.id,
+    status: transactionStatusHistory.nextStatus,
+    note: transactionStatusHistory.customerNote,
+    createdAt: transactionStatusHistory.createdAt,
+  }).from(transactionStatusHistory)
+    .where(eq(transactionStatusHistory.transactionId, id))
+    .orderBy(desc(transactionStatusHistory.createdAt));
+  return { transaction, history };
+}
+
 export async function getTransactionById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -309,10 +366,21 @@ export async function getTransactionById(id: number) {
   return rows[0];
 }
 
-export async function updateTransactionStatus(id: number, status: InsertTransactionRecord["status"], nextAction?: string, assigneeUserId?: number) {
+export async function updateTransactionStatus(input: { id: number; status: NonNullable<InsertTransactionRecord["status"]>; actorUserId: number; nextAction?: string; assigneeUserId?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(transactions).set({ status, nextAction, assigneeUserId }).where(eq(transactions.id, id));
+  await db.transaction(async (tx) => {
+    const current = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, input.id)).limit(1);
+    if (!current[0]) throw new Error("TRANSACTION_NOT_FOUND");
+    await tx.update(transactions).set({ status: input.status, nextAction: input.nextAction, assigneeUserId: input.assigneeUserId }).where(eq(transactions.id, input.id));
+    await tx.insert(transactionStatusHistory).values({
+      transactionId: input.id,
+      previousStatus: current[0].status,
+      nextStatus: input.status,
+      actorUserId: input.actorUserId,
+      customerNote: input.nextAction,
+    });
+  });
 }
 
 export function assertCanManage(role: string) {

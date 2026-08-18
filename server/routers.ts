@@ -80,6 +80,14 @@ export const appRouter = router({
   }),
   transactions: router({
     list: protectedProcedure.query(({ ctx }) => db.listTransactions(ctx.user.id, ctx.user.role)),
+    mobileList: protectedProcedure.query(({ ctx }) => db.listMobileTransactions(ctx.user.id, ctx.user.role)),
+    mobileDetail: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const transaction = await db.getTransactionById(input.id);
+      if (!transaction || !canAccessCustomerRecord(ctx.user.role, transaction.customerUserId, ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
+      const detail = await db.getMobileTransactionDetail(input.id);
+      if (!detail) throw new TRPCError({ code: "NOT_FOUND" });
+      return { ...detail, canUpdateStatus: canOperateTransactions(ctx.user.role) };
+    }),
     createForRequest: protectedProcedure.input(z.object({
       requestId: z.number().int().positive(),
       customerUserId: z.number().int().positive(),
@@ -103,7 +111,7 @@ export const appRouter = router({
       const transaction = await db.getTransactionById(input.id);
       if (!transaction || !canAccessCustomerRecord(ctx.user.role, transaction.customerUserId, ctx.user.id)) throw new TRPCError({ code: "NOT_FOUND" });
       if (!canOperateTransactions(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
-      await db.updateTransactionStatus(input.id, input.status, input.nextAction, input.assigneeUserId);
+      await db.updateTransactionStatus({ id: input.id, status: input.status, actorUserId: ctx.user.id, nextAction: input.nextAction, assigneeUserId: input.assigneeUserId });
       await emitAndProcessAutomationEvent({ eventName: "transaction.status_changed", aggregateType: "transaction", aggregateId: String(input.id), ownerUserId: transaction.customerUserId, payload: { transactionId: input.id, status: input.status, automationOrigin: false }, idempotencyKey: `transaction-status:${input.id}:${input.status}:${Date.now()}` });
       await db.createAuditLog({ actorUserId: ctx.user.id, action: "transaction.status_updated", resourceType: "transaction", resourceId: input.id, metadata: { status: input.status } });
       return { success: true };
