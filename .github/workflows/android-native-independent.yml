@@ -71,9 +71,6 @@ jobs:
           test -n "$ANDROID_RELEASE_KEY_PASSWORD"
           printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > android/app/abu-mishal-release.jks
 
-      - name: Configure release signing
-        run: node ../scripts/configure-android-release-signing.cjs android/app/build.gradle
-
       - name: Build signed Android package
         id: build_package
         shell: bash
