@@ -74,11 +74,20 @@ jobs:
       - name: Verify release keystore
         shell: bash
         run: |
-          keytool -list \
+          if ! keytool -list \
+            -keystore android/app/abu-mishal-release.jks \
+            -storepass "$ANDROID_RELEASE_KEYSTORE_PASSWORD" > /dev/null 2>&1; then
+            echo "::error::تعذر فتح keystore: راجع ANDROID_RELEASE_KEYSTORE_BASE64 وANDROID_RELEASE_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          if ! keytool -list \
             -keystore android/app/abu-mishal-release.jks \
             -storepass "$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_RELEASE_KEY_ALIAS" > /dev/null
-          keytool -importkeystore \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::اسم المفتاح غير موجود: راجع ANDROID_RELEASE_KEY_ALIAS."
+            exit 1
+          fi
+          if ! keytool -importkeystore \
             -srckeystore android/app/abu-mishal-release.jks \
             -srcstorepass "$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
             -srcalias "$ANDROID_RELEASE_KEY_ALIAS" \
@@ -87,7 +96,10 @@ jobs:
             -deststoretype JKS \
             -deststorepass abuMishaalPreflight2026 \
             -destkeypass abuMishaalPreflight2026 \
-            -noprompt > /dev/null
+            -noprompt > /dev/null 2>&1; then
+            echo "::error::تعذر قراءة المفتاح الخاص: راجع ANDROID_RELEASE_KEY_PASSWORD."
+            exit 1
+          fi
           rm -f android/app/abu-mishal-signing-preflight.jks
 
       - name: Build signed Android package
