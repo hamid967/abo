@@ -1,34 +1,59 @@
 require("./scripts/load-env.cjs");
 const fs = require("node:fs");
 
-const rawBundleId = "com.app.governmenttransactionstracker";
-const bundleId = rawBundleId
-  .replace(/[-_]/g, ".")
-  .replace(/[^a-zA-Z0-9.]/g, "")
-  .replace(/\.+/g, ".")
-  .replace(/^\.+|\.+$/g, "")
-  .toLowerCase()
-  .split(".")
-  .map((segment) => (/^[a-zA-Z]/.test(segment) ? segment : `x${segment}`))
-  .join(".") || "space.manus.app";
+const DEFAULT_APPLICATION_ID = "sa.abumishal.app";
+const DEFAULT_SCHEME = "abumishal";
 
-const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
+function normalizeApplicationId(value, fallback = DEFAULT_APPLICATION_ID) {
+  const normalized = String(value || "")
+    .replace(/[-_]/g, ".")
+    .replace(/[^a-zA-Z0-9.]/g, "")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase()
+    .split(".")
+    .filter(Boolean)
+    .map((segment) => (/^[a-zA-Z]/.test(segment) ? segment : `x${segment}`))
+    .join(".");
+
+  return normalized.split(".").length >= 2 ? normalized : fallback;
+}
+
+function normalizeScheme(value, fallback = DEFAULT_SCHEME) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9+.-]/g, "");
+
+  return /^[a-z][a-z0-9+.-]*$/.test(normalized) ? normalized : fallback;
+}
+
+// Keep these configurable because changing an identifier after publishing creates
+// a different app in the stores. Existing releases can retain their identifier
+// through the environment while new releases use the Abu Mishal defaults.
+const iosBundleIdentifier = normalizeApplicationId(
+  process.env.EXPO_IOS_BUNDLE_IDENTIFIER || process.env.EXPO_APPLICATION_ID,
+);
+const androidPackage = normalizeApplicationId(
+  process.env.EXPO_ANDROID_PACKAGE || process.env.EXPO_APPLICATION_ID,
+);
+const deepLinkScheme = normalizeScheme(process.env.EXPO_DEEP_LINK_SCHEME);
 const fcmConfigPath = "./google-services.json";
 const hasFcmConfig = fs.existsSync(fcmConfigPath);
 
 /** @type {import("expo/config").ExpoConfig} */
 const config = {
   name: "أبو مشعل",
-  slug: "government-transactions-tracker",
+  slug: process.env.EXPO_APP_SLUG || "abu-mishal",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
-  scheme: `manus${timestamp}`,
+  scheme: deepLinkScheme,
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
-    bundleIdentifier: bundleId,
+    bundleIdentifier: iosBundleIdentifier,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -42,14 +67,16 @@ const config = {
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
-    package: bundleId,
+    package: androidPackage,
     versionCode: 1,
     ...(hasFcmConfig ? { googleServicesFile: fcmConfigPath } : {}),
-    permissions: ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "READ_CALENDAR", "WRITE_CALENDAR"],
+    // Calendar permissions are contributed by expo-calendar and requested only
+    // when the user invokes that feature. Exact alarms are intentionally omitted.
+    permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [{
       action: "VIEW",
       autoVerify: true,
-      data: [{ scheme: `manus${timestamp}`, host: "*" }],
+      data: [{ scheme: deepLinkScheme }],
       category: ["BROWSABLE", "DEFAULT"],
     }],
   },

@@ -24,8 +24,8 @@ describe("mobile platform compatibility", () => {
     expect(config).toContain("faceIDPermission");
     expect(config).toContain("POST_NOTIFICATIONS");
     expect(config).toContain('"expo-calendar"');
-    expect(config).toContain("READ_CALENDAR");
-    expect(config).toContain("WRITE_CALENDAR");
+    expect(config).not.toContain('permissions: ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM"');
+    expect(config).toContain('permissions: ["POST_NOTIFICATIONS"]');
     expect(config).toContain("fcmConfigPath");
     expect(config).toContain("googleServicesFile: fcmConfigPath");
     expect(config).toContain("enableBackgroundRemoteNotifications: true");

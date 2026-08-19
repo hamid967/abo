@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { decodeExpoGoCallbackState } from "../server/_core/oauth";
 
 describe("Expo Go OAuth callback state", () => {
@@ -12,5 +13,17 @@ describe("Expo Go OAuth callback state", () => {
   it("rejects a callback outside trusted Manus HTTPS domains", () => {
     const callback = "https://example.com/api/oauth/expo-go/callback?attempt=f0b99d4e-2d23-4c97-90e9-8d0d71165a17";
     expect(decodeExpoGoCallbackState(Buffer.from(callback, "utf8").toString("base64"))).toBeUndefined();
+  });
+
+  it("submits the completion proof in a POST body instead of the URL", () => {
+    const clientSource = readFileSync("constants/oauth.ts", "utf8");
+    const serverSource = readFileSync("server/_core/oauth.ts", "utf8");
+
+    expect(clientSource).toContain('fetch(`${baseUrl}/api/oauth/expo-go/complete`, {');
+    expect(clientSource).toContain('method: "POST"');
+    expect(clientSource).toContain("body: JSON.stringify({ attemptId: attempt.attemptId, proof: attempt.proof })");
+    expect(clientSource).not.toContain("/api/oauth/expo-go/complete?");
+    expect(serverSource).toContain('app.post("/api/oauth/expo-go/complete"');
+    expect(serverSource).not.toContain('app.get("/api/oauth/expo-go/complete"');
   });
 });

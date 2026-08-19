@@ -16,8 +16,8 @@ export function isTodayActionHidden(action: TodayActionState | undefined, now = 
 
 export function nextDayAtNine(now = new Date()) {
   const next = new Date(now);
-  next.setDate(next.getDate() + 1);
-  next.setHours(9, 0, 0, 0);
+  next.setUTCDate(next.getUTCDate() + 1);
+  next.setUTCHours(9, 0, 0, 0);
   return next.toISOString();
 }
 

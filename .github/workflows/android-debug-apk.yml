@@ -57,6 +57,12 @@ jobs:
           pnpm check
           pnpm lint
 
+      - name: Run tests
+        run: pnpm test
+
+      - name: Validate Expo project
+        run: pnpm dlx expo-doctor@1.17.11
+
       - name: Restore optional Firebase Android configuration
         shell: bash
         run: |
@@ -103,10 +109,40 @@ jobs:
           fi
           if [ "${{ inputs.build_variant }}" = "release" ]; then
             ./gradlew app:assembleRelease "${signing_args[@]}"
-            echo "apk_path=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "package_path=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
           else
             ./gradlew app:assembleDebug
-            echo "apk_path=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "package_path=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify release APK signature
+        if: ${{ inputs.build_variant == 'release' && inputs.package_format == 'apk' }}
+        shell: bash
+        env:
+          APK_PATH: ${{ steps.assemble_package.outputs.package_path }}
+        run: |
+          set -euo pipefail
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$sdk_root" ]; then
+            echo "::error::Android SDK location is unavailable; release signature verification cannot run."
+            exit 1
+          fi
+
+          apksigner_path="$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          if [ -z "$apksigner_path" ]; then
+            echo "::error::apksigner was not found in the installed Android SDK build-tools."
+            exit 1
+          fi
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::Release APK was not created at the expected path: $APK_PATH"
+            exit 1
+          fi
+
+          if ! "$apksigner_path" verify --verbose --print-certs "$APK_PATH"; then
+            echo "::error::Release APK signature verification failed. The artifact will not be uploaded."
+            exit 1
           fi
 
       - name: Upload Android package artifact
@@ -116,3 +152,8 @@ jobs:
           path: ${{ steps.assemble_package.outputs.package_path }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove release keystore
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f android/app/abu-mishal-release.jks
