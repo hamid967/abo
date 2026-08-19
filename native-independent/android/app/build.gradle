@@ -71,6 +71,9 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def nativeVersionCode = providers.gradleProperty("ABU_MISHAL_VERSION_CODE").orElse("2").get().toInteger()
+def nativeVersionName = providers.gradleProperty("ABU_MISHAL_VERSION_NAME").orElse("1.1.0").get()
+def hasReleaseSigning = providers.gradleProperty("ABU_MISHAL_KEYSTORE_FILE").isPresent()
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -82,8 +85,8 @@ android {
         applicationId "com.app.governmenttransactionstracker"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (findProperty("ABU_MISHAL_VERSION_CODE") ?: "2").toInteger()
-        versionName (findProperty("ABU_MISHAL_VERSION_NAME") ?: "1.1.0")
+        versionCode nativeVersionCode
+        versionName nativeVersionName
     }
     signingConfigs {
         debug {
@@ -92,15 +95,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(providers.gradleProperty("ABU_MISHAL_KEYSTORE_FILE").get())
+                storePassword providers.gradleProperty("ABU_MISHAL_KEYSTORE_PASSWORD").get()
+                keyAlias providers.gradleProperty("ABU_MISHAL_KEY_ALIAS").get()
+                keyPassword providers.gradleProperty("ABU_MISHAL_KEY_PASSWORD").get()
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
