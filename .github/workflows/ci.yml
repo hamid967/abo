@@ -79,7 +79,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Audit production dependencies
         # Existing high-severity transitive findings remain visible in the log;
