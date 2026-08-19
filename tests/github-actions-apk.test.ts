@@ -25,7 +25,7 @@ describe("GitHub Actions Android APK workflow", () => {
     expect(workflow).toContain("Restore release keystore");
     expect(workflow).toContain("configure-android-release-signing.cjs");
     expect(workflow).toContain("./gradlew app:assembleRelease");
-    expect(workflow).toContain("abu-mishal-android-${{ inputs.build_variant }}-${{ inputs.package_format }}");
+    expect(workflow).toContain("abu-mishal-android-${{ env.BUILD_VARIANT }}-${{ env.PACKAGE_FORMAT }}");
   });
 
   it("supports a signed Android App Bundle for Google Play distribution", () => {
