@@ -1,6 +1,9 @@
 name: Build Android Package
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       build_variant:
@@ -14,7 +17,7 @@ on:
       package_format:
         description: "Android package format"
         required: true
-        default: "aab"
+        default: "apk"
         type: choice
         options:
           - aab
@@ -29,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
+      BUILD_VARIANT: ${{ inputs.build_variant || 'release' }}
+      PACKAGE_FORMAT: ${{ inputs.package_format || 'apk' }}
       GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
       ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
       ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
@@ -84,7 +89,7 @@ jobs:
         run: npx expo prebuild --platform android --non-interactive --clean
 
       - name: Restore release keystore
-        if: ${{ inputs.build_variant == 'release' }}
+        if: ${{ env.BUILD_VARIANT == 'release' }}
         shell: bash
         run: |
           test -n "$ANDROID_RELEASE_KEYSTORE_BASE64"
@@ -94,7 +99,7 @@ jobs:
           printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > android/app/abu-mishal-release.jks
 
       - name: Configure release signing
-        if: ${{ inputs.build_variant == 'release' }}
+        if: ${{ env.BUILD_VARIANT == 'release' }}
         run: node scripts/configure-android-release-signing.cjs
 
       - name: Assemble Android package
@@ -102,7 +107,7 @@ jobs:
         working-directory: android
         shell: bash
         run: |
-          if [ "${{ inputs.package_format }}" = "aab" ] && [ "${{ inputs.build_variant }}" != "release" ]; then
+          if [ "$PACKAGE_FORMAT" = "aab" ] && [ "$BUILD_VARIANT" != "release" ]; then
             echo "AAB distribution packages must use the release variant."
             exit 1
           fi
@@ -112,12 +117,12 @@ jobs:
             -PABU_MISHAL_KEY_ALIAS="$ANDROID_RELEASE_KEY_ALIAS"
             -PABU_MISHAL_KEY_PASSWORD="$ANDROID_RELEASE_KEY_PASSWORD"
           )
-          if [ "${{ inputs.package_format }}" = "aab" ]; then
+          if [ "$PACKAGE_FORMAT" = "aab" ]; then
             ./gradlew app:bundleRelease "${signing_args[@]}"
             echo "package_path=android/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ inputs.build_variant }}" = "release" ]; then
+          if [ "$BUILD_VARIANT" = "release" ]; then
             ./gradlew app:assembleRelease "${signing_args[@]}"
             echo "package_path=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
           else
@@ -126,7 +131,7 @@ jobs:
           fi
 
       - name: Verify release APK signature
-        if: ${{ inputs.build_variant == 'release' && inputs.package_format == 'apk' }}
+        if: ${{ env.BUILD_VARIANT == 'release' && env.PACKAGE_FORMAT == 'apk' }}
         shell: bash
         env:
           APK_PATH: ${{ steps.assemble_package.outputs.package_path }}
@@ -158,12 +163,12 @@ jobs:
       - name: Upload Android package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: abu-mishal-android-${{ inputs.build_variant }}-${{ inputs.package_format }}
+          name: abu-mishal-android-${{ env.BUILD_VARIANT }}-${{ env.PACKAGE_FORMAT }}
           path: ${{ steps.assemble_package.outputs.package_path }}
           if-no-files-found: error
           retention-days: 14
 
       - name: Remove release keystore
-        if: ${{ always() }}
+        if: ${{ always() && env.BUILD_VARIANT == 'release' }}
         shell: bash
         run: rm -f android/app/abu-mishal-release.jks
