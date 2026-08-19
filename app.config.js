@@ -2,7 +2,7 @@ require("./scripts/load-env.cjs");
 const fs = require("node:fs");
 
 const DEFAULT_APPLICATION_ID = "sa.abumishal.app";
-const DEFAULT_SCHEME = "abumishal";
+const DEFAULT_SCHEME = "abumishaal";
 
 function normalizeApplicationId(value, fallback = DEFAULT_APPLICATION_ID) {
   const normalized = String(value || "")

@@ -34,6 +34,10 @@ jobs:
       ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
       ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
       ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+      EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL || 'https://govtrackapp-juokytrr.manus.space' }}
+      EXPO_PUBLIC_OAUTH_PORTAL_URL: ${{ vars.EXPO_PUBLIC_OAUTH_PORTAL_URL }}
+      EXPO_PUBLIC_APP_ID: ${{ vars.EXPO_PUBLIC_APP_ID }}
+      EXPO_PUBLIC_DEEP_LINK_SCHEME: ${{ vars.EXPO_PUBLIC_DEEP_LINK_SCHEME || 'abumishaal' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,6 +55,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate production authentication configuration
+        shell: bash
+        run: |
+          test -n "$EXPO_PUBLIC_API_BASE_URL" || { echo "::error::Missing repository variable EXPO_PUBLIC_API_BASE_URL"; exit 1; }
+          case "$EXPO_PUBLIC_API_BASE_URL" in https://*) ;; *) echo "::error::EXPO_PUBLIC_API_BASE_URL must use HTTPS"; exit 1 ;; esac
 
       - name: Validate TypeScript and linting
         run: |

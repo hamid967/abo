@@ -181,7 +181,7 @@ export default function AccountScreen() {
   }
 
   return (
-    <ScreenContainer edges={["top", "bottom", "left", "right"]}>
+    <ScreenContainer edges={["top", "bottom", "left", "right"]} style={styles.screen}>
       <View style={styles.container}>
         <View style={styles.nav}>
           <Pressable
@@ -471,6 +471,7 @@ function LoginStep({
   );
 }
 const styles = StyleSheet.create({
+  screen: { backgroundColor: "#F5F2E9" },
   container: { flex: 1, padding: 20 },
   authContent: { flex: 1 },
   nav: { alignItems: "center", flexDirection: "row-reverse", gap: 12 },

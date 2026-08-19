@@ -24,7 +24,7 @@ describe("Expo application identity", () => {
 
     expect(config.name).toBe("أبو مشعل");
     expect(config.slug).toBe("abu-mishal");
-    expect(config.scheme).toBe("abumishal");
+    expect(config.scheme).toBe("abumishaal");
     expect(config.ios?.bundleIdentifier).toBe("sa.abumishal.app");
     expect(config.android?.package).toBe("sa.abumishal.app");
   });
@@ -49,6 +49,6 @@ describe("Expo application identity", () => {
 
     expect(config.ios?.bundleIdentifier).toBe("sa.abumishal.app");
     expect(config.android?.package).toBe("sa.abumishal.app");
-    expect(config.scheme).toBe("abumishal");
+    expect(config.scheme).toBe("abumishaal");
   });
 });

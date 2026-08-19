@@ -256,6 +256,8 @@ export const appRouter = router({
           metadata: {
             questionLength: input.question.length,
             sourceCount: response.sources.length,
+            confidence: response.confidence,
+            suggestedAction: response.suggestedAction,
           },
         });
         return response;

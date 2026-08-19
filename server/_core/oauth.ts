@@ -167,7 +167,8 @@ export function registerOAuthRoutes(app: Express) {
         res.status(410).type("html").send("<main><h1>انتهت جلسة تسجيل الدخول</h1><p>ارجع إلى التطبيق وابدأ المحاولة مرة أخرى.</p></main>");
         return;
       }
-      res.redirect(302, `abumishaal://oauth/callback?attempt=${encodeURIComponent(callback.attemptId)}`);
+      const appScheme = process.env.EXPO_DEEP_LINK_SCHEME || "abumishaal";
+      res.redirect(302, `${appScheme}://oauth/callback?attempt=${encodeURIComponent(callback.attemptId)}`);
     } catch (error) {
       console.error("[OAuth] Native callback failed", error);
       res.status(500).type("html").send("<main><h1>تعذر حفظ نتيجة تسجيل الدخول</h1><p>ارجع إلى التطبيق وأعد المحاولة.</p></main>");

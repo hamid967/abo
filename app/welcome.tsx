@@ -9,7 +9,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useLocale } from "@/lib/locale-provider";
 
-const logo = require("@/assets/images/icon.png");
+const logo = require("@/assets/images/abu-mishal-3d-logo.png");
 const INTRO_SEEN_KEY = "abu-mishal:intro-seen:v1";
 
 export default function WelcomeScreen() {
@@ -23,7 +23,7 @@ export default function WelcomeScreen() {
   const text = isArabic
     ? {
         eyebrow: "أبو مشعل",
-        title: "كل معاملة أوضح، وكل خطوة أقرب.",
+        title: "معاملاتك… أوضح وأسرع.",
         description: "مساحة متابعة مستقلة تساعدك على تنظيم طلباتك ومتطلباتها ومواعيدها في تجربة واحدة هادئة وواضحة.",
         primary: "ابدأ طلباً جديداً",
         secondary: "تسجيل الدخول والمتابعة",
@@ -125,8 +125,8 @@ const styles = StyleSheet.create({
   skip: { padding: 8 },
   skipText: { color: "#5C6F64", fontSize: 13, fontWeight: "700" },
   hero: { marginTop: 34, position: "relative" },
-  logoHalo: { alignItems: "center", alignSelf: "flex-end", backgroundColor: "#E7F3EA", borderRadius: 42, height: 84, justifyContent: "center", width: 84 },
-  logo: { borderRadius: 31, height: 62, width: 62 },
+  logoHalo: { alignItems: "center", alignSelf: "center", backgroundColor: "#071713", borderColor: "#D9B45B", borderRadius: 72, borderWidth: 1, elevation: 12, height: 144, justifyContent: "center", shadowColor: "#00A878", shadowOpacity: 0.42, shadowRadius: 24, width: 144 },
+  logo: { height: 126, resizeMode: "contain", width: 126 },
   sparkOne: { backgroundColor: "#F4E7CD", borderRadius: 6, height: 12, position: "absolute", right: 96, top: 9, transform: [{ rotate: "22deg" }], width: 12 },
   sparkTwo: { backgroundColor: "#1A8C68", borderRadius: 4, height: 8, position: "absolute", right: 16, top: 95, transform: [{ rotate: "34deg" }], width: 8 },
   heroTitle: { color: "#17382F", fontSize: 32, fontWeight: "900", letterSpacing: -0.5, lineHeight: 42, marginTop: 24 },
