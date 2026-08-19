@@ -1,8 +1,9 @@
 import * as Linking from "expo-linking";
+import Constants from "expo-constants";
 import * as ReactNative from "react-native";
 import * as SecureStore from "expo-secure-store";
 
-const deepLinkScheme = process.env.EXPO_PUBLIC_DEEP_LINK_SCHEME ?? "abumishal";
+const deepLinkScheme = process.env.EXPO_PUBLIC_DEEP_LINK_SCHEME ?? "abumishaal";
 
 const env = {
   portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
@@ -25,6 +26,8 @@ export type ExpoGoLoginAttempt = {
   attemptId: string;
   proof: string;
 };
+
+const isExpoGo = Constants.appOwnership === "expo";
 
 /**
  * Get the API base URL, deriving from current hostname if not set.
@@ -122,12 +125,14 @@ export const getLoginUrl = (redirectUri = getRedirectUri()) => {
 export async function startOAuthLogin(): Promise<ExpoGoLoginAttempt | null> {
   if (ReactNative.Platform.OS !== "web") {
     const baseUrl = getApiBaseUrl();
-    if (!baseUrl) throw new Error("تعذر تحديد خادم تسجيل الدخول. أعد فتح التطبيق من رابط Expo Go الصحيح.");
+    if (!baseUrl) throw new Error("نسخة التطبيق غير مرتبطة بخادم تسجيل الدخول. يرجى تحديث التطبيق إلى أحدث إصدار.");
     const deviceId = await getSecurityDeviceId();
-    const response = await fetch(`${baseUrl}/api/oauth/expo-go/attempt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deviceId, platform: ReactNative.Platform.OS }) });
+    const attemptEndpoint = isExpoGo ? "/api/oauth/expo-go/attempt" : "/api/oauth/native/attempt";
+    const response = await fetch(`${baseUrl}${attemptEndpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deviceId, platform: ReactNative.Platform.OS }) });
     if (!response.ok) throw new Error("تعذر بدء تسجيل الدخول. حاول مرة أخرى.");
-    const attempt = await response.json() as ExpoGoLoginAttempt & { redirectUri: string };
-    const loginUrl = getLoginUrl(attempt.redirectUri);
+    const attempt = await response.json() as ExpoGoLoginAttempt & { redirectUri?: string; loginUrl?: string };
+    const loginUrl = attempt.loginUrl ?? (attempt.redirectUri ? getLoginUrl(attempt.redirectUri) : "");
+    if (!loginUrl) throw new Error("لم يُرجع الخادم رابط تسجيل دخول صالحاً.");
     const supported = await Linking.canOpenURL(loginUrl);
     if (!supported) throw new Error("لا يمكن فتح صفحة تسجيل الدخول على هذا الجهاز.");
     await Linking.openURL(loginUrl);
@@ -154,11 +159,13 @@ export async function completeExpoGoLogin(attempt: ExpoGoLoginAttempt): Promise<
 }> {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) throw new Error("تعذر الاتصال بخادم تسجيل الدخول.");
-  const response = await fetch(`${baseUrl}/api/oauth/expo-go/complete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ attemptId: attempt.attemptId, proof: attempt.proof }),
-  });
+  const response = isExpoGo
+    ? await fetch(`${baseUrl}/api/oauth/expo-go/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId: attempt.attemptId, proof: attempt.proof }),
+      })
+    : await fetch(`${baseUrl}/api/oauth/native/complete?attemptId=${encodeURIComponent(attempt.attemptId)}&proof=${encodeURIComponent(attempt.proof)}`);
   if (response.status === 202) return { status: "pending" };
   if (!response.ok) throw new Error("تعذر إكمال تسجيل الدخول. ابدأ محاولة جديدة.");
   const data = await response.json() as { status: "completed"; app_session_id: string; user: { id: number; openId: string; name: string | null; email: string | null; loginMethod: string | null; lastSignedIn: string } };

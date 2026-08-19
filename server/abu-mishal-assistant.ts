@@ -12,24 +12,53 @@ const requestIntakeGuidanceSchema = z
   })
   .strict();
 
+const guidanceAnswerSchema = z.object({
+  answer: z.string().trim().min(1).max(1800),
+  confidence: z.enum(["high", "medium", "low"]),
+  followUpQuestions: z.array(z.string().trim().min(2).max(180)).max(3).default([]),
+  suggestedAction: z.enum(["none", "open_request", "track_transaction", "open_support"]).default("none"),
+}).strict();
+
+const sensitiveGuidancePattern = /\d{8,}|(?:password|passcode|otp|cvv|verification\s*code|identity\s*number|card\s*number|كلمة\s*المرور|رمز\s*(?:التحقق|التأكيد)|رقم\s*الهوية|رقم\s*البطاقة)/i;
+
 export function containsSensitiveIntakeData(value: string) {
   return /\d{8,}/.test(value) || /(password|verification\s*code|card\s*(number|details)|كلمة\s*المرور|رمز\s*التحقق|رقم\s*الهوية|بيانات\s*البطاقة)/i.test(value);
 }
 
 export async function answerGuidanceQuestion(question: string, language: "ar" | "en" = "ar") {
+  if (sensitiveGuidancePattern.test(question)) {
+    return {
+      answer: language === "ar"
+        ? "حفاظاً على خصوصيتك، احذف رقم الهوية أو كلمة المرور أو رمز التحقق أو بيانات البطاقة ثم أرسل سؤالك بصيغة عامة. لم تُرسل رسالتك إلى نموذج الذكاء الاصطناعي."
+        : "For your privacy, remove identity, password, verification-code or card details and resend the question in general terms. Your message was not sent to the AI model.",
+      sources: [],
+      confidence: "high" as const,
+      followUpQuestions: [],
+      suggestedAction: "open_support" as const,
+    };
+  }
   const { referenceText, sources } = await getKnowledgeContext(language);
   const sourceContext = referenceText || (language === "ar" ? "لا توجد مقالات أو أسئلة شائعة معتمدة ذات صلة في قاعدة المعرفة حالياً." : "No approved knowledge articles or FAQs are currently available.");
   const response = await invokeLLM({
     model: "gpt-5-mini",
+    maxTokens: 900,
+    responseFormat: { type: "json_object" },
     messages: [
-      { role: "system", content: language === "ar" ? `أنت مساعد أبو مشعل، منصة سعودية مستقلة لمتابعة المعاملات والمهام. أجب بلهجة سعودية مهنية واضحة وباختصار، واعتمد حصراً على مصادر المعرفة التالية. لا تستنتج حقائق خارجها؛ إن لم تكن الإجابة فيها، قل بوضوح إن المعلومة غير متاحة في المصادر المعتمدة واقترح فتح تذكرة دعم. لا تدّعِ تمثيل أي جهة حكومية، ولا تؤكد قبول معاملة، ولا تقدم فتوى قانونية أو معلومات غير مؤكدة. لا تطلب بيانات هوية أو كلمات مرور أو معلومات حساسة. عند الاستناد إلى مادة، اذكر عنوان المصدر في آخر الجواب.\n\nمصادر المعرفة المعتمدة:\n${sourceContext}` : `You are Abu Mishal Assistant, an independent Saudi platform for tracking requests and tasks. Answer briefly in clear English and rely exclusively on the approved knowledge sources below. Do not infer facts outside them; if the answer is absent, state that clearly and suggest opening a support ticket. Do not claim to represent a government entity, confirm approval of a request, provide binding legal advice, or request identity, password, or sensitive information. Name a source title at the end when using one.\n\nApproved knowledge sources:\n${sourceContext}` },
+      { role: "system", content: language === "ar" ? `أنت مساعد أبو مشعل الذكي، منصة سعودية مستقلة لمتابعة المعاملات والمهام. افهم هدف المستخدم أولاً ثم أجب بلهجة سعودية مهنية واضحة، بخطوات عملية قصيرة. اعتمد حصراً على مصادر المعرفة التالية ولا تخترع متطلبات أو مواعيد. إذا كانت المعلومة ناقصة فاجعل confidence=low، اطرح حتى 3 أسئلة متابعة محددة، واجعل suggestedAction=open_support عند الحاجة. لا تدّعِ تمثيل جهة حكومية أو قبول معاملة ولا تقدم فتوى قانونية. أخرج JSON فقط: {"answer":"...","confidence":"high|medium|low","followUpQuestions":["..."],"suggestedAction":"none|open_request|track_transaction|open_support"}.\n\nمصادر المعرفة المعتمدة:\n${sourceContext}` : `You are the intelligent Abu Mishal Assistant, an independent Saudi platform for tracking requests and tasks. First infer the user's goal, then answer in concise practical steps. Rely exclusively on the approved sources below; never invent requirements or deadlines. If evidence is incomplete use confidence=low, ask up to 3 specific follow-up questions, and use suggestedAction=open_support when needed. Do not claim government representation, confirm approval, or provide binding legal advice. Return JSON only: {"answer":"...","confidence":"high|medium|low","followUpQuestions":["..."],"suggestedAction":"none|open_request|track_transaction|open_support"}.\n\nApproved knowledge sources:\n${sourceContext}` },
       { role: "user", content: question },
     ],
   });
   const content = response.choices[0]?.message?.content;
+  const fallbackAnswer = (typeof content === "string" ? content.trim() : "") || (language === "ar" ? "ما قدرنا نجهز رد إرشادي الآن. تقدر تحوّل استفسارك لموظف عشان يراجعه." : "We could not prepare guidance now. You can send the question to support for review.");
+  let guidance: z.infer<typeof guidanceAnswerSchema>;
+  try {
+    guidance = guidanceAnswerSchema.parse(JSON.parse(fallbackAnswer));
+  } catch {
+    guidance = { answer: fallbackAnswer, confidence: sources.length ? "medium" : "low", followUpQuestions: [], suggestedAction: sources.length ? "none" : "open_support" };
+  }
   return {
-    answer: (typeof content === "string" ? content.trim() : "") || "ما قدرنا نجهز رد إرشادي الآن. تقدر تحوّل استفسارك لموظف عشان يراجعه.",
-    sources: sources.slice(0, 6),
+    ...guidance,
+    sources: guidance.confidence === "low" && !referenceText ? [] : sources.slice(0, 6),
   };
 }
 
