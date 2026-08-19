@@ -37,8 +37,8 @@ jobs:
       ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
       ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
       PACKAGE_FORMAT: ${{ inputs.package_format || 'aab' }}
-      VERSION_CODE: ${{ 100000 + github.run_number }}
-      VERSION_NAME: 1.1.${{ github.run_number }}
+      VERSION_CODE_RAW: ${{ github.run_number }}
+      VERSION_NAME: "1.1.${{ github.run_number }}"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -85,12 +85,13 @@ jobs:
         shell: bash
         working-directory: native-independent/android
         run: |
+          version_code=$((100000 + VERSION_CODE_RAW))
           signing_args=(
             -PABU_MISHAL_KEYSTORE_FILE=abu-mishal-release.jks
             -PABU_MISHAL_KEYSTORE_PASSWORD="$ANDROID_RELEASE_KEYSTORE_PASSWORD"
             -PABU_MISHAL_KEY_ALIAS="$ANDROID_RELEASE_KEY_ALIAS"
             -PABU_MISHAL_KEY_PASSWORD="$ANDROID_RELEASE_KEY_PASSWORD"
-            -PABU_MISHAL_VERSION_CODE="$VERSION_CODE"
+            -PABU_MISHAL_VERSION_CODE="$version_code"
             -PABU_MISHAL_VERSION_NAME="$VERSION_NAME"
           )
           if [ "$PACKAGE_FORMAT" = "apk" ]; then
