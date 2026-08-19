@@ -43,17 +43,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.12.0
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: native-independent/pnpm-lock.yaml
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -64,11 +57,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -f pnpm-lock.yaml
-          pnpm install --no-frozen-lockfile
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Validate independent TypeScript
-        run: pnpm exec tsc --noEmit
+        run: npx tsc --noEmit
 
       - name: Restore release keystore
         shell: bash
