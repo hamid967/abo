@@ -47,7 +47,7 @@ const config = {
   slug: process.env.EXPO_APP_SLUG || "abu-mishal",
   version: "1.0.0",
   orientation: "portrait",
-  icon: "./assets/images/icon.png",
+  icon: "./assets/images/abu-mishal-brand-icon.png",
   scheme: deepLinkScheme,
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
@@ -60,9 +60,8 @@ const config = {
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#F5EFE4",
-      foregroundImage: "./assets/images/android-icon-foreground.png",
-      backgroundImage: "./assets/images/android-icon-background.png",
+      backgroundColor: "#0B5D45",
+      foregroundImage: "./assets/images/abu-mishal-brand-icon.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
     edgeToEdgeEnabled: true,
@@ -83,7 +82,7 @@ const config = {
   web: {
     bundler: "metro",
     output: "static",
-    favicon: "./assets/images/favicon.png",
+    favicon: "./assets/images/abu-mishal-brand-icon.png",
   },
   plugins: [
     "expo-router",
@@ -97,7 +96,7 @@ const config = {
     ["expo-audio", { microphonePermission: "يسمح $(PRODUCT_NAME) بالوصول إلى الميكروفون عند استخدام ميزات الصوت." }],
     ["expo-camera", { cameraPermission: "يسمح $(PRODUCT_NAME) بتصوير المستندات التي تختار رفعها إلى محفظتك." }],
     ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: true }],
-    ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFFDF7", dark: { backgroundColor: "#102C24" } }],
+    ["expo-splash-screen", { image: "./assets/images/abu-mishal-brand-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#0B5D45", dark: { backgroundColor: "#071713" } }],
     ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a"], minSdkVersion: 24 } }],
   ],
   experiments: {

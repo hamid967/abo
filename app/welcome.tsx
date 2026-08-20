@@ -2,14 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppText as Text } from "@/components/ui/app-text";
 
+import { BrandMark } from "@/components/brand-mark";
 import { ScreenContainer } from "@/components/screen-container";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useLocale } from "@/lib/locale-provider";
 
-const logo = require("@/assets/images/abu-mishal-3d-logo.png");
 const INTRO_SEEN_KEY = "abu-mishal:intro-seen:v1";
 
 export default function WelcomeScreen() {
@@ -81,12 +81,12 @@ export default function WelcomeScreen() {
       <Animated.View style={{ flex: 1, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [motion.reducedMotion ? 0 : 12, 0] }) }] }}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.topLine, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
-          <View style={styles.brandPill}><Image source={logo} style={styles.smallLogo} /><Text style={[styles.brandPillText, { writingDirection: direction }]}>{text.eyebrow}</Text></View>
+          <View style={styles.brandPill}><BrandMark size={22} accessibilityLabel="شعار أبو مشعل" /><Text style={[styles.brandPillText, { writingDirection: direction }]}>{text.eyebrow}</Text></View>
           <Pressable onPress={() => finishIntro("/(tabs)")} style={({ pressed }) => [styles.skip, pressed && (motion.reducedMotion ? styles.pressedReduced : styles.pressed)]}><Text style={[styles.skipText, { writingDirection: direction }]}>{isArabic ? "تخطي" : "Skip"}</Text></Pressable>
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.logoHalo}><Image source={logo} style={styles.logo} /></View>
+          <View style={styles.logoHalo}><BrandMark size={126} accessibilityLabel="شعار أبو مشعل" /></View>
           <View style={styles.sparkOne} /><View style={styles.sparkTwo} />
           <Text style={[styles.heroTitle, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{text.title}</Text>
           <Text style={[styles.heroDescription, { writingDirection: direction, textAlign: isArabic ? "right" : "left" }]}>{text.description}</Text>
@@ -119,14 +119,12 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   content: { flexGrow: 1, padding: 20, paddingBottom: 30 },
   topLine: { alignItems: "center", justifyContent: "space-between" },
-  brandPill: { alignItems: "center", backgroundColor: "#F1F7F2", borderColor: "#DCEBE0", borderRadius: 999, borderWidth: 1, flexDirection: "row-reverse", gap: 7, paddingHorizontal: 11, paddingVertical: 7 },
-  smallLogo: { borderRadius: 7, height: 20, width: 20 },
+  brandPill: { alignItems: "center", backgroundColor: "#F1F7F2", borderColor: "#B8E1D0", borderRadius: 999, borderWidth: 1, flexDirection: "row-reverse", gap: 7, paddingHorizontal: 11, paddingVertical: 7 },
   brandPillText: { color: "#0B5D45", fontSize: 11, fontWeight: "900", letterSpacing: 0.5 },
   skip: { padding: 8 },
   skipText: { color: "#5C6F64", fontSize: 13, fontWeight: "700" },
   hero: { marginTop: 34, position: "relative" },
-  logoHalo: { alignItems: "center", alignSelf: "center", backgroundColor: "#071713", borderColor: "#D9B45B", borderRadius: 72, borderWidth: 1, elevation: 12, height: 144, justifyContent: "center", shadowColor: "#00A878", shadowOpacity: 0.42, shadowRadius: 24, width: 144 },
-  logo: { height: 126, resizeMode: "contain", width: 126 },
+  logoHalo: { alignItems: "center", alignSelf: "center", backgroundColor: "#0B5D45", borderColor: "#D9B45B", borderRadius: 72, borderWidth: 1, elevation: 12, height: 144, justifyContent: "center", shadowColor: "#38C99B", shadowOpacity: 0.34, shadowRadius: 24, width: 144 },
   sparkOne: { backgroundColor: "#F4E7CD", borderRadius: 6, height: 12, position: "absolute", right: 96, top: 9, transform: [{ rotate: "22deg" }], width: 12 },
   sparkTwo: { backgroundColor: "#1A8C68", borderRadius: 4, height: 8, position: "absolute", right: 16, top: 95, transform: [{ rotate: "34deg" }], width: 8 },
   heroTitle: { color: "#17382F", fontSize: 32, fontWeight: "900", letterSpacing: -0.5, lineHeight: 42, marginTop: 24 },
