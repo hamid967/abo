@@ -6,6 +6,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { ScreenContainer } from "@/components/screen-container";
 import { AppText as Text, AppTextInput as TextInput } from "@/components/ui/app-text";
 import { BeneficiaryType, TransactionPriority } from "@/lib/transactions";
+import { createLocalRequestNumber, guestRequestNextAction } from "@/lib/guest-request";
 import { useTransactions } from "@/lib/transactions-provider";
 import { useAccount } from "@/hooks/use-account";
 import { trpc } from "@/lib/trpc";
@@ -42,6 +43,7 @@ export default function NewRequestScreen() {
   const [description, setDescription] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const stepTitle = useMemo(() => ["نوع المستفيد", "الخدمة والجهة", "بيانات الطلب", "مراجعة وإرسال"][step], [step]);
 
@@ -64,25 +66,30 @@ export default function NewRequestScreen() {
       return;
     }
 
-    if (!isAuthenticated) {
-      Alert.alert("تسجيل الدخول مطلوب", "سجّل الدخول أولاً لحفظ الطلب ومتابعته عبر أجهزتك.", [{ text: "لاحقاً", style: "cancel" }, { text: "تسجيل الدخول", onPress: () => router.push("/account" as never) }]);
-      return;
-    }
-
+    setIsSubmitting(true);
     try {
-      const request = await createRequest.mutateAsync({
-        beneficiaryType,
-        title: title.trim(),
-        description: [description.trim(), `الخدمة: ${serviceType}`, `الجهة المرجعية: ${agency}`, reference.trim() ? `المرجع: ${reference.trim()}` : ""].filter(Boolean).join("\n"),
-        customerPhone: customerPhone.trim(),
-        city: city.trim() || undefined,
-        priority,
-        desiredDueAt: dueDate ? new Date(`${dueDate}T12:00:00`) : undefined,
-      });
+      const localRequestNumber = createLocalRequestNumber();
+      let requestNumber = localRequestNumber;
+
+      // يستطيع الزائر إنشاء سجل محلي على جهازه دون إرسال أي بيانات إلى الخادم.
+      if (isAuthenticated) {
+        const request = await createRequest.mutateAsync({
+          beneficiaryType,
+          title: title.trim(),
+          description: [description.trim(), `الخدمة: ${serviceType}`, `الجهة المرجعية: ${agency}`, reference.trim() ? `المرجع: ${reference.trim()}` : ""].filter(Boolean).join("\n"),
+          customerPhone: customerPhone.trim(),
+          city: city.trim() || undefined,
+          priority,
+          desiredDueAt: dueDate ? new Date(`${dueDate}T12:00:00`) : undefined,
+        });
+        requestNumber = request.requestNumber;
+      }
+
       const transaction = await addTransaction({
         title: title.trim(),
         agency,
-        reference: request.requestNumber,
+        reference: reference.trim() || requestNumber,
+        requestNumber,
         status: "received",
         beneficiaryType,
         serviceType,
@@ -92,11 +99,15 @@ export default function NewRequestScreen() {
         customerPhone: customerPhone.trim(),
         dueDate: dueDate || undefined,
         notes: description.trim() || undefined,
-        nextAction: "تم استلام الطلب. سيُراجع فريق أبو مشعل البيانات ويرسل لك التحديث التالي.",
+        nextAction: isAuthenticated
+          ? "تم استلام الطلب. سيُراجع فريق أبو مشعل البيانات ويرسل لك التحديث التالي."
+          : guestRequestNextAction(),
       });
       router.replace({ pathname: "/transaction/[id]", params: { id: transaction.id } });
     } catch {
-      Alert.alert("تعذر إرسال الطلب", "تم الاحتفاظ بالبيانات داخل النموذج. تحقق من الاتصال ثم أعد المحاولة.");
+      Alert.alert("تعذر حفظ الطلب", "تم الاحتفاظ بالبيانات داخل النموذج. تحقق من الاتصال ثم أعد المحاولة.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -151,7 +162,7 @@ export default function NewRequestScreen() {
 
           <View style={styles.footer}>
             {step > 0 && <Pressable onPress={() => setStep((current) => current - 1)} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Text style={styles.backText}>السابق</Text></Pressable>}
-            <Pressable disabled={createRequest.isPending} onPress={continueFlow} style={({ pressed }) => [styles.nextButton, createRequest.isPending && styles.disabled, pressed && styles.nextPressed]}><Text style={styles.nextText}>{createRequest.isPending ? "جارٍ الإرسال..." : step === 3 ? "إرسال الطلب" : "متابعة"}</Text><Ionicons name={step === 3 ? "send" : "arrow-back"} size={18} color="#FFFFFF" /></Pressable>
+            <Pressable disabled={isSubmitting} onPress={continueFlow} style={({ pressed }) => [styles.nextButton, isSubmitting && styles.disabled, pressed && styles.nextPressed]}><Text style={styles.nextText}>{isSubmitting ? (isAuthenticated ? "جارٍ الإرسال..." : "جارٍ الحفظ...") : step === 3 ? "إرسال الطلب" : "متابعة"}</Text><Ionicons name={step === 3 ? "send" : "arrow-back"} size={18} color="#FFFFFF" /></Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
